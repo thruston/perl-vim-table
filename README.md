@@ -13,6 +13,7 @@ Installation
 
 - Add a line like the following to your ".vimrc" file.
 
+
       :command! -nargs=* -range=% Table <line1>,<line2>!perl ~/your-folder/table.pl <q-args>
 
   which you should adjust appropriately so your perl can find where you put table.pl.
@@ -20,6 +21,7 @@ Installation
   except that Vim insists on the name starting with an uppercase letter.
 
 - Add some perl libraries if necessary
+
 
       cpanm Statistics::Descriptive
       cpanm Math::Prime::Util  
