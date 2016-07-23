@@ -334,8 +334,13 @@ sub add_totals {
         $stat->clear();
         for (my $r = 0; $r < $Table->{rows}; $r++ ) {
             my $s = $Table->{data}->[$r][$c];
-            if (defined $s && $s =~ $Number_pattern) {
-                $stat->add_data($s);
+            if (defined $s) {
+                if ($s =~ $Number_pattern) {
+                    $stat->add_data($s);
+                }
+                elsif ($s =~ /negative\(($Number_atom)\)/ ) {
+                    $stat->add_data(-$1)
+                }
             }
         }
         my $value = $expr;
