@@ -225,14 +225,12 @@ exit;
 
 sub set_output_form {
     my $form_name = shift;
-    given($form_name) {
-        when("tex")   { $separator = ' & '; $eol_marker = '\\cr' }
-        when("latex") { $separator = ' & '; $eol_marker = '\\\\' }
-        when("csv")   { $separator = q{,} ; $eol_marker = q{}    }
-        when("html")  { $separator = '<td>'; $eol_marker = q{}   }
-        when("debug") { $separator = ' ! '; $eol_marker = '<<'   }
-        default       { $separator = q{  }; $eol_marker = q{}    }
-    }
+    if    ($form_name eq "tex")   { $separator = ' & '; $eol_marker = '\\cr' }
+    elsif ($form_name eq "latex") { $separator = ' & '; $eol_marker = '\\\\' }
+    elsif ($form_name eq "csv")   { $separator = q{,} ; $eol_marker = q{}    }
+    elsif ($form_name eq "html")  { $separator = '<td>'; $eol_marker = q{}   }
+    elsif ($form_name eq "debug") { $separator = ' ! '; $eol_marker = '<<'   }
+    else                          { $separator = q{  }; $eol_marker = q{}    }
 }
 
 sub transpose {
@@ -264,14 +262,12 @@ sub sort_rows_by_column {
     my $col = shift;
 
     my $reverse = 0;
-    given($col) {
-        when (undef)     { $col = 0 }
-        when (/^[a-z]$/) { $col = ord($col)-ord('a') }
-        when (/^[A-Z]$/) { $col = ord($col)-ord('A'); $reverse++ }
-        when (/^\d+$/)   { $col -= 1 } # 0 indexed
-        when (/^-\d+$/)  { $col = $Table->{cols}+1+$col }
-        default          { $col = 0 }
-    }
+    if    (!$col)             { $col = 0 }
+    elsif ($col =~ /^[a-z]$/) { $col = ord($col)-ord('a') }
+    elsif ($col =~ /^[A-Z]$/) { $col = ord($col)-ord('A'); $reverse++ }
+    elsif ($col =~ /^\d+$/)   { $col -= 1 } # 0 indexed
+    elsif ($col =~ /^-\d+$/)  { $col = $Table->{cols}+1+$col }
+    else                      { $col = 0 }
    
     # check bounds 
     $col = $col >= $Table->{cols} ? $Table->{cols}-1
@@ -320,11 +316,12 @@ sub add_col_labels {
 
 sub add_totals {
     # Add values of function to bottom of cols
-    my $expr = shift;
-    given($expr) {
-        when (undef) { $expr = 'sum' }
-        when ("var") { $expr = 'variance' }
-        when ("sd")  { $expr = 'standard_deviation' }
+    my $expr = shift || "sum";
+    if ($expr eq "var") {
+        $expr = "variance"
+    }
+    elsif ($expr eq "sd") {
+        $expr = "standard_deviation"
     }
 
     my @new_stats_row = ();
@@ -371,19 +368,21 @@ sub append_new_rows {
 
 sub reshape_table {
     my $direction = shift;
-    
+
     return if $Table->{cols}<3; # do nothing on thin tables
-    
-    given($direction) {
-        when ("long") { make_long_table() }
-        when ("wide") { make_wide_table() }
-        default {
-            if ($Table->{cols}==3) { 
-                make_wide_table() 
-            } 
-            else {
-                make_long_table()
-            }
+
+    if ( $direction eq "long" ) {
+        make_long_table()
+    }
+    elsif ( $direction eq "wide" ) {
+        make_wide_table() 
+    }
+    else {
+        if ($Table->{cols}==3) { 
+            make_wide_table() 
+        } 
+        else {
+            make_long_table()
         }
     }
 }
@@ -506,29 +505,30 @@ sub arrange_cols {
         for (my $c=0; $c<$Table->{cols}; $c++ ) {
             my $value = $Table->{data}->[$r]->[$c] || 0;
             $cumulative_sum_of{$key} += $value if $value =~ m{$Number_pattern};
-            given($value) {
-                when ( /$Number_pattern/ && $value<0 ) { $value = "($value)" }
-                when ( /([.1234567890]+)([BKMG])/ ) {
-                  $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
-                                             : $2 eq 'M' ? 1048576 
-                                             : $2 eq 'K' ? 1024
-                                             : 1);
+            if ($value =~ /$Number_pattern/ && $value<0 ) { 
+                $value = "($value)"
             }
-                when (!/$Number_pattern/)              { $value = "'$value'" }          
+            elsif ($value =~ /([.1234567890]+)([BKMG])/ ) {
+                $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
+                    : $2 eq 'M' ? 1048576 
+                    : $2 eq 'K' ? 1024
+                    : 1);
+            }
+            elsif ($value !~ /$Number_pattern/)  { 
+                $value = "'$value'"   
             }
             $value_for{$key} = $value;
             $key++;
         }
         for my $m ( $permutation =~ m{[a-zA-Z1-9.?\$]|\{.*?\}}gxmso ) {
             my $value;
-            given($m) {
-                when (/^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] }
-                when (/^[A-Z]$/) { $value = $cumulative_sum_of{lc $m} }
-                when (/^[1-9]$/) { $value = $Table->{data}->[$r]->[$m-1] }
-                when (q{.})      { $value = $r+1 }
-                when (q{$})      { $value = $Table->{rows} }
-                when (q{?})      { $value = rand()-0.5 }
-                default {
+            if ($m =~ /^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] }
+         elsif ($m =~ /^[A-Z]$/) { $value = $cumulative_sum_of{lc $m} }
+         elsif ($m =~ /^[1-9]$/) { $value = $Table->{data}->[$r]->[$m-1] }
+         elsif ($m eq q{.})      { $value = $r+1 }
+         elsif ($m eq q{$})      { $value = $Table->{rows} }
+         elsif ($m eq q{?})      { $value = rand()-0.5 }
+            else {
                     # strip {} from expr
                     $m =~ s/^\{//; $m =~ s/\}$//;
                     # substitute cell values (and don't bother checking for out of range letters)
@@ -536,7 +536,6 @@ sub arrange_cols {
                     $m =~ s/\b([A-Z])\b/$cumulative_sum_of{lc $1}/g;
                     # evaluate & replace answer with expression on error
                     $value = join(' ', eval $m); $value = $m if $@;
-                }
             }
             push @$new_row_ref, $value;
         }
