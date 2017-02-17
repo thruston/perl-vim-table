@@ -1211,7 +1211,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 11 Feb 2016 
+Toby Thurston -- 17 Feb 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
