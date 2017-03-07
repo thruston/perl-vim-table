@@ -221,7 +221,7 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
     print $out, "\n";
 }
 
-exit;
+exit 0;
 
 sub set_output_form {
     my $form_name = shift;
@@ -518,13 +518,12 @@ sub arrange_cols {
                 $value = "'$value'"   
             }
             $value_for{$key} = $value;
-            $key++;
+            $key++; # bump the column index
         }
         for my $m ( $permutation =~ m{[a-zA-Z1-9.?\$]|\{.*?\}}gxmso ) {
             my $value;
-            if ($m =~ /^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] }
-         elsif ($m =~ /^[A-Z]$/) { $value = $cumulative_sum_of{lc $m} }
-         elsif ($m =~ /^[1-9]$/) { $value = $Table->{data}->[$r]->[$m-1] }
+            if ($m =~ /^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] || $m }
+         elsif ($m =~ /^[A-Z]$/) { $value = $cumulative_sum_of{lc $m} || $m }
          elsif ($m eq q{.})      { $value = $r+1 }
          elsif ($m eq q{$})      { $value = $Table->{rows} }
          elsif ($m eq q{?})      { $value = rand()-0.5 }
@@ -535,7 +534,8 @@ sub arrange_cols {
                     $m =~ s/\b([a-z])\b/$value_for{$1}/g; 
                     $m =~ s/\b([A-Z])\b/$cumulative_sum_of{lc $1}/g;
                     # evaluate & replace answer with expression on error
-                    $value = join(' ', eval $m); $value = $m if $@;
+                    $value = eval $m ;
+                    $value = $m if $@;
             }
             push @$new_row_ref, $value;
         }
@@ -1198,7 +1198,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 11 Feb 2016 
+Toby Thurston -- 06 Feb 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
