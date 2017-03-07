@@ -294,6 +294,11 @@ sub as_number {
     my ($s) = @_;
     return 1e9 unless defined $s;
     return $s if $s =~ $Number_pattern;
+    if ($s =~ m{\A\d\d\D\d\d\D\d\d\d\d\Z}) {
+        $s = etos($s);
+        $s =~ s/-//g;
+        return $s;
+    }
     return -1e9;
 }
 
@@ -301,6 +306,11 @@ sub as_number_reversed {
     my ($s) = @_;
     return -1e9 unless defined $s;
     return $s if $s =~ $Number_pattern;
+    if ($s =~ m{\A\d\d\D\d\d\D\d\d\d\d\Z}) {
+        $s = etos($s);
+        $s =~ s/-//g;
+        return $s;
+    }
     return 1e9;
 }
 
@@ -614,7 +624,7 @@ sub dow {
 # Convert dd/mm/yyyy to yyyy-mm-dd
 sub etos {
     my ($edate) = @_;
-    if ($edate =~ /([0123]\d)\/(0[1-9]|1[012])\/([12]\d\d\d)/) {
+    if ($edate =~ /([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d)/) {
         return date(base("$3-$2-$1"))
     }
     else {
@@ -697,6 +707,9 @@ sub make_date {
         my $m = month_number($2);
         my $d = sprintf "%02d", $1;
         return date(base("$3-$m-$d"))
+    }
+    elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
+        return date(base("$3-$2-$1"))
     }
     else {
         return $s;
@@ -1198,7 +1211,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 06 Feb 2017 
+Toby Thurston -- 17 Feb 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
