@@ -18,7 +18,7 @@
 #        dp dp-list      round numbers in each col to specified decimal places
 #        sf sf-list      round numbers in each col to specified significant figures
 #        reshape wide | long   reshape table (for R etc)
-#        make tex | latex | plain | csv   output in tex etc form
+#        make tex | latex | plain | csv | tsv   output in tex etc form
 #        label           label columns with letters
 #        wrap n          wrap columns in long table n times (default=2)
 #        unwrap n        unwrap cols in wide table (default=half number of cols) 
@@ -204,7 +204,9 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
     for (my $c=0; $c<$Table->{cols}; $c++ ) {
         if (defined $Table->{data}->[$r][$c]) {
             my $val = $Table->{data}->[$r][$c];
-            my $wd = $separator eq q{,} ? length($val) : $widths[$c];
+            my $wd = $separator eq q{,} ? length($val) : 
+                     $separator eq "\t" ? length($val) : 
+                     $widths[$c];
             if ( $separator eq q{,} && index($val,$separator)>0) {
                 $val = q{"} . $val . q{"};
             }
@@ -228,6 +230,7 @@ sub set_output_form {
     if    ($form_name eq "tex")   { $separator = ' & '; $eol_marker = '\\cr' }
     elsif ($form_name eq "latex") { $separator = ' & '; $eol_marker = '\\\\' }
     elsif ($form_name eq "csv")   { $separator = q{,} ; $eol_marker = q{}    }
+    elsif ($form_name eq "tsv")   { $separator = "\t" ; $eol_marker = q{}    }
     elsif ($form_name eq "html")  { $separator = '<td>'; $eol_marker = q{}   }
     elsif ($form_name eq "debug") { $separator = ' ! '; $eol_marker = '<<'   }
     else                          { $separator = q{  }; $eol_marker = q{}    }
@@ -1065,7 +1068,7 @@ between 0 and 9 you want for each column.  There's no default, it just does noth
 if your string is too short the last digit is repeated as necessary.  So to round everything to a whole number
 do "dp 0".  To round the first col to 0, the second to 3 and the rest to 4 do "dp 034", and so on. 
 
-=item make [plain|tex|latex|csv] - set the output format
+=item make [plain|tex|latex|csv|tsv] - set the output format
 
 C<make> sets the output format.   Normally this happens automagically, but if, for example, you want to separate
 your input data by single spaces, you might find it helpful to do ":Table 1 make plain" to line everything up
@@ -1076,6 +1079,9 @@ Note that this only affects the rows, it won't magically generate the TeX or LaT
 The CSV option should produce something that you can easily import into Excel or similar spreadsheets. 
 However beware that it's very simple: you need to ensure that there are no commas or quotes in the data.
 To get back from CSV form to plain form do C<Table , make plain>. (Provided there were no commas in your data).
+
+The TSV option can use used when you want to import into Word -- you can use Table.. Convert Text to Table...
+using tabs as the column separator
 
 =item reshape [long|wide] - expand or condense data tables for R
 
@@ -1211,7 +1217,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 17 Feb 2017 
+Toby Thurston -- 7 Mar 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
