@@ -544,10 +544,20 @@ sub arrange_cols {
                     # strip {} from expr
                     $m =~ s/^\{//; $m =~ s/\}$//;
                     # substitute cell values (and don't bother checking for out of range letters)
-                    $m =~ s/\b([a-z])\b/$value_for{$1}/g; 
-                    $m =~ s/\b([A-Z])\b/$cumulative_sum_of{lc $1}/g;
+                    my @tokens = $m =~ m/[a-z]+|[A-Z]+|./g;
+                    for my $t (@tokens) {
+                        if ( exists $value_for{$t} ) {
+                            $t = $value_for{$t} 
+                        }
+                        elsif ( exists $cumulative_sum_of{lc $t} ) {
+                            $t = $cumulative_sum_of{lc $t}
+                        }
+                        elsif ( $t eq "_" ) {
+                            $t = ".' '."
+                        }
+                    }
                     # evaluate & replace answer with expression on error
-                    $value = eval $m ;
+                    $value = eval join ' ', @tokens ;
                     $value = $m if $@;
             }
             push @$new_row_ref, $value;
@@ -796,8 +806,9 @@ creates this:
          15    15.549      354 
 
 OK, that's not perfect, but all you have to do now is change that 15 to "Sum" (or just
-undo the last change to get rid of the new line).  Table.pl also  
-lets you transpose a table (to get this...)
+undo the last change to get rid of the new line or whatever).  
+
+Table.pl also lets you transpose a table (to get this...)
 
       event         1      2      3      4      5 
       eruption  3.600  1.800  3.333  2.283  4.533 
@@ -838,7 +849,7 @@ You are unlikely to want to do this much, but try something like this
 
 Add a line like the following to your ".vimrc" file.
 
-    :command! -nargs=* -range=% Table <line1>,<line2>!perl ~/perl/table.pl <q-args>
+    :command! -nargs=* -range=% Table <line1>,<line2>!perl ~/perl-vim-table/table.pl <q-args>
 
 which you should adjust appropriately so your perl can find where you put table.pl.
 You can of course use some word other than "Table" as the command name. Take your pick, 
@@ -879,7 +890,8 @@ Incidentally, any tab characters in your input are silently converted to double 
 After the optional delimiter you should specify a sequence of verbs.  If the verb needs an option then
 that goes right after the verb.  Verbs and options are separated by blanks.  The parsing is very simple.
 If it looks like a verb it's treated as one.  If it doesn't, it's assumed to be an option.  Anything
-not recognized is just silently ignored.
+coming after an option, but not recognized as a verb, causes an error.  A message will be written back in the file.
+You will probably want to use the "undo" function after reading it.
 
 =head1 DESCRIPTION
 
@@ -992,7 +1004,10 @@ You can also insert arbitrary calculated columns by putting an expression in cur
 and so on.  Each single letter "a", "b", etc is changed into the corresponding
 cell value and then the resulting expression is evaluated. You can use any normal Perl function:
 sin, cos, atan2, sqrt, log, exp, int, abs, and so on.  You can also use min, max (from List::Util)
-and floor and ceil from POSIX.  
+and floor and ceil from POSIX.  You can use operators like "." to concatenate values, but you can't include
+a space in your formula because this confuses the command line processing earlier.  So an extra operator is included:
+the operator "_" will concatenate with a space.  Any sequence of more than one letter (like "bad") or any letter 
+that does not refer to a letter in your table (possibly like "z") will be treated as a plain string.
 
 Note that you should use lower case letters only to refer to each column value.  If you use an upper case 
 letter, "A", "B", etc, it will be replaced by the cumulative sum of the corresponding column, in other
@@ -1080,7 +1095,7 @@ The CSV option should produce something that you can easily import into Excel or
 However beware that it's very simple: you need to ensure that there are no commas or quotes in the data.
 To get back from CSV form to plain form do C<Table , make plain>. (Provided there were no commas in your data).
 
-The TSV option can use used when you want to import into Word -- you can use Table.. Convert Text to Table...
+The TSV option can be used when you want to import into Word -- you can use Table.. Convert Text to Table...
 using tabs as the column separator
 
 =item reshape [long|wide] - expand or condense data tables for R
@@ -1217,7 +1232,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 7 Mar 2017 
+Toby Thurston -- 17 Mar 2017 
 
 =head1 LICENSE AND COPYRIGHT
 

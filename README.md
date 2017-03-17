@@ -1,6 +1,6 @@
 # perl-vim-table
 
-Toby Thurston -- 04 May 2016 
+Toby Thurston -- 17 Mar 2017 
 
 A perl filter that parses text and lines things up in columns.  
 
@@ -19,7 +19,7 @@ Installation
   You can of course use some word other than "Table" as the command name. Take your pick, 
   except that Vim insists on the name starting with an uppercase letter.
 
-- Add some perl libraries if necessary
+- Add these perl libraries (unless you already have them):
 
         cpanm Statistics::Descriptive
         cpanm Math::Prime::Util  
