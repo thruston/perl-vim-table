@@ -557,7 +557,7 @@ sub arrange_cols {
                         }
                     }
                     # evaluate & replace answer with expression on error
-                    $value = eval join ' ', @tokens ;
+                    $value = eval join '', @tokens ;
                     $value = $m if $@;
             }
             push @$new_row_ref, $value;
