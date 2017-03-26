@@ -521,7 +521,7 @@ sub arrange_cols {
             if ($value =~ /$Number_pattern/ && $value<0 ) { 
                 $value = "($value)"
             }
-            elsif ($value =~ /([.1234567890]+)([BKMG])/ ) {
+            elsif ($value =~ /^([.1234567890]+)([BKMG])$/ ) {
                 $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
                     : $2 eq 'M' ? 1048576 
                     : $2 eq 'K' ? 1024
