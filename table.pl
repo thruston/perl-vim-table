@@ -535,7 +535,7 @@ sub arrange_cols {
         }
         for my $m ( $permutation =~ m{[a-zA-Z1-9.?\$]|\{.*?\}}gxmso ) {
             my $value;
-            if ($m =~ /^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] || $m }
+            if ($m =~ /^[a-z]$/) { $value = $Table->{data}->[$r]->[ord($m)-ord('a')] }
          elsif ($m =~ /^[A-Z]$/) { $value = $cumulative_sum_of{lc $m} || $m }
          elsif ($m eq q{.})      { $value = $r+1 }
          elsif ($m eq q{$})      { $value = $Table->{rows} }
