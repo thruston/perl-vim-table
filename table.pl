@@ -33,6 +33,7 @@ use Math::Prime::Util qw(factor);
 use List::Util qw(min max sum);   
 use POSIX      qw(floor ceil);
 use Math::SigFigs;
+use Math::Round qw(round);
 use utf8; # for £ signs
 use open qw[ :std :utf8 ];
 
@@ -619,6 +620,8 @@ sub unwrap_table {
     $Table->{cols} = $new_cols;
     
 }
+
+# Useful functions
 
 
 # Day of the week from base
