@@ -33,7 +33,7 @@ use Math::Prime::Util qw(factor);
 use List::Util qw(min max sum);   
 use POSIX      qw(floor ceil);
 use Math::SigFigs;
-use Math::Round qw(round);
+use Math::Round qw(nearest);
 use utf8; # for £ signs
 use open qw[ :std :utf8 ];
 
@@ -622,7 +622,10 @@ sub unwrap_table {
 }
 
 # Useful functions
-
+sub round {
+    my ($n, $figs) = @_, 0;
+    return nearest(10**(-$figs), $n)
+}
 
 # Day of the week from base
 sub dow {
@@ -1005,16 +1008,23 @@ You can also insert arbitrary calculated columns by putting an expression in cur
 =back
 
 and so on.  Each single letter "a", "b", etc is changed into the corresponding
-cell value and then the resulting expression is evaluated. You can use any normal Perl function:
-sin, cos, atan2, sqrt, log, exp, int, abs, and so on.  You can also use min, max (from List::Util)
-and floor and ceil from POSIX.  You can use operators like "." to concatenate values, but you can't include
-a space in your formula because this confuses the command line processing earlier.  So an extra operator is included:
-the operator "_" will concatenate with a space.  Any sequence of more than one letter (like "bad") or any letter 
-that does not refer to a letter in your table (possibly like "z") will be treated as a plain string.
+cell value and then the resulting expression is evaluated. You can use any
+normal Perl function: sin, cos, atan2, sqrt, log, exp, int, abs, and so on.
+You can also use min, max (from List::Util) and floor and ceil from POSIX, as
+well as a C<round()> function that works like Excel, and the C<nearest()> function
+from Math::Round.
 
-Note that you should use lower case letters only to refer to each column value.  If you use an upper case 
-letter, "A", "B", etc, it will be replaced by the cumulative sum of the corresponding column, in other
-words the sum of the values in the column from the top of the table to the current row. So given
+You can use operators like "." to concatenate values, but you can't include a
+space in your formula because this confuses the command line processing
+earlier.  So an extra operator is included: the operator "_" will concatenate
+with a space.  Any sequence of more than one letter (like "bad") or any letter
+that does not refer to a letter in your table (possibly like "z") will be
+treated as a plain string.
+
+Note that you should use lower case letters only to refer to each column value.
+If you use an upper case letter, "A", "B", etc, it will be replaced by the
+cumulative sum of the corresponding column, in other words the sum of the
+values in the column from the top of the table to the current row. So given
 
     First   1
     Second  2

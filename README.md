@@ -1,6 +1,6 @@
 # perl-vim-table
 
-Toby Thurston -- 17 Mar 2017 
+Toby Thurston -- 31 May 2017 
 
 A perl filter that parses text and lines things up in columns.  
 
@@ -24,6 +24,7 @@ Installation
         cpanm Statistics::Descriptive
         cpanm Math::Prime::Util  
         cpanm Math::SigFigs
+        cpanm Math::Round
 
 For more details
 ----------------
