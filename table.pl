@@ -25,17 +25,18 @@
 #
 # For full documentaion read (or better still extract) the POD at the end
 
+use 5.008;
 use strict;
 use warnings;
-use feature "switch";
-use Statistics::Descriptive;    # used for add functions
-use Math::Prime::Util qw(factor);
-use List::Util qw(min max sum);   
-use POSIX      qw(floor ceil);
-use Math::SigFigs;
-use Math::Round qw(nearest);
 use utf8; # for £ signs
 use open qw[ :std :utf8 ];
+
+use List::Util qw(min max sum shuffle);   
+use Math::Prime::Util qw(factor);
+use Math::Round qw(nearest);
+use Math::SigFigs;
+use POSIX qw(floor ceil);
+use Statistics::Descriptive;    # used for add functions
 
 # following Cowlishaw, TRL p.136, but excluding octal (leading 0 and no point) but including 0 itself
 #                     sign?    mantissa-------------->  exponent? 
@@ -60,6 +61,7 @@ my %Action_for = (
     flow    => \&reshape_table,
     wrap    => \&wrap_table,
     unwrap  => \&unwrap_table,
+    shuffle => \&shuffle_rows,
 );
 
 # deal with the command line
@@ -88,8 +90,11 @@ else {
 my $indent = 0;
 my $eol_marker = q{};
 
-# read the data from stdin
-my @input_lines = <>;
+# Read the data from stdin unless it's connected to the terminal.
+# For normal usage from VIM STDIN will *not* be connected to the terminal, 
+# but will have the input lines we need.  For testing, we can run "perl table.pl" 
+# from the command line: in this situation we *don't* want to wait for STDIN.
+my @input_lines = -t STDIN ? () : <STDIN>;
 
 if (@input_lines) {
     chomp(@input_lines);
@@ -131,7 +136,7 @@ for (@input_lines) {
             $_ =~ s/\$//;
         }
         else{
-            $money_cols[$i] ||= 0;
+            $money_cols[$i] ||= '0';
         }
         $i++;
     }
@@ -165,7 +170,7 @@ for (my $c=0; $c<$Table->{cols}; $c++ ) {
         next unless defined $Table->{data}->[$r][$c];
         if ( $Table->{data}->[$r][$c] =~ $Number_pattern ) {
             $aligns[$c]++;
-            if (defined $money_cols[$c] && $money_cols[$c] ne 0) {
+            if (defined $money_cols[$c] && $money_cols[$c] ne '0') {
                 $Table->{data}->[$r][$c] = $money_cols[$c] . $Table->{data}->[$r][$c];
             }
         }
@@ -371,13 +376,29 @@ sub add_totals {
 }
 
 sub append_new_rows {
-    my $sequence = shift;
-    $sequence =~ s/:/../xims;
-    for my $n (eval $sequence ) {
+    my $sequence_or_number = shift;
+    my $alpha = 1;
+    my $omega = 10;
+    if ( $sequence_or_number =~ m{\A-?\d+\Z}ixmso ) {
+        $omega = $sequence_or_number;
+    }
+    elsif ( $sequence_or_number =~ m{\A(-?\d+)[^-0-9]+(-?\d+)\Z} ) {
+        $alpha = $1;
+        $omega = $2;
+    }
+    if ($alpha > $omega) {
+        ($omega, $alpha) = ($alpha, $omega);
+    }
+        
+    for my $n ($alpha .. $omega) {
         push @{$Table->{data}}, [ ($n) ];
         $Table->{rows}++;
     }
     $Table->{cols} = max(1, $Table->{cols});
+}
+
+sub shuffle_rows {
+    $Table->{data} = [ shuffle @{$Table->{data}} ];
 }
 
 sub reshape_table {
@@ -558,7 +579,7 @@ sub arrange_cols {
                         }
                     }
                     # evaluate & replace answer with expression on error
-                    $value = eval join '', @tokens ;
+                    $value = eval join '', @tokens;
                     $value = $m if $@;
             }
             push @$new_row_ref, $value;
@@ -1184,6 +1205,31 @@ to half the number of columns in the input.
 C<label> simply adds an alphabetic label at the top of the 
 columns to help you work out which is which when rearranging.
 
+=item gen - generate rows
+
+C<gen a..b> where C<a> and C<b> are integers, and C<..> is any non-numeric character sequence, 
+will generate a table with a single column of integers running from C<a> to C<b>.  C<gen 10> is 
+interpreted as C<gen 1..10>.
+
+If the table already has some data, then the single column will be appended as new rows at the bottom 
+of the existing column "a".
+
+=item shuffle - rearrange the rows with a Fisher-Yates shuffle.
+
+This is implemented using the "shuffle" routine from List::Util.
+
+Here's a one liner to generate a random 4x4 arrangement of the numbers 1 to 16:
+(start with a blank file)
+
+    :Table gen 16 shuffle wrap wrap
+
+produces (for example):
+
+     5   7   4   9
+    13   2   3   8
+    15   1   6  16
+    12  11  10  14
+
 =back
 
 =head2 Special rows
@@ -1229,7 +1275,7 @@ None.
 
 =head1 DEPENDENCIES
 
-Perl 5.10 or better (for "use feature switch").
+Perl 5.08 or better.
 
 Note that you don't actually need VIM compiled with Perl support, table.pl works entirely as an 
 external filter. 
@@ -1245,7 +1291,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 17 Mar 2017 
+Toby Thurston -- 02 Jun 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
