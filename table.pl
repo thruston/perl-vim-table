@@ -376,7 +376,7 @@ sub add_totals {
 }
 
 sub append_new_rows {
-    my $sequence_or_number = shift;
+    my $sequence_or_number = shift || "Nothing";
     my $alpha = 1;
     my $omega = 10;
     if ( $sequence_or_number =~ m{\A-?\d+\Z}ixmso ) {
