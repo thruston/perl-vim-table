@@ -736,16 +736,17 @@ sub date {
 }
 
 # returns 01-12 from January-December
-sub month_number {
+sub monthnumber {
     my ($s) = @_;
     my $m = index("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC",uc(substr($s,0,3)));
     return sprintf "%02d", $m/4+1;
 }
 
-sub make_date {
+# parse a date into sortable form -- NB no _ in the function name
+sub makedate {
     my $s = shift;
     if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
-        my $m = month_number($2);
+        my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
         return date(base("$3-$m-$d"))
     }
@@ -760,7 +761,7 @@ sub make_date {
 # return months since Jan 2000 from mmm-yy
 sub mondex {
     my ($s) = @_;
-    my $m = month_number($s);
+    my $m = monthnumber($s);
     my $y = substr($s,4,2);
     return 12*$y+($m-1)
 }
