@@ -18,7 +18,7 @@
 #        dp dp-list      round numbers in each col to specified decimal places
 #        sf sf-list      round numbers in each col to specified significant figures
 #        reshape wide | long   reshape table (for R etc)
-#        make tex | latex | plain | csv | tsv   output in tex etc form
+#        make tex | latex | plain | csv | tsv | md   output in tex etc form
 #        label           label columns with letters
 #        wrap n          wrap columns in long table n times (default=2)
 #        unwrap n        unwrap cols in wide table (default=half number of cols) 
@@ -235,6 +235,7 @@ sub set_output_form {
     my $form_name = shift;
     if    ($form_name eq "tex")   { $separator = ' & '; $eol_marker = '\\cr' }
     elsif ($form_name eq "latex") { $separator = ' & '; $eol_marker = '\\\\' }
+    elsif ($form_name eq "md")    { $separator = ' | '; $eol_marker = ' |' }
     elsif ($form_name eq "csv")   { $separator = q{,} ; $eol_marker = q{}    }
     elsif ($form_name eq "tsv")   { $separator = "\t" ; $eol_marker = q{}    }
     elsif ($form_name eq "html")  { $separator = '<td>'; $eol_marker = q{}   }
