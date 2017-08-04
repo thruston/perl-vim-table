@@ -1,6 +1,7 @@
 #!/usr/bin/perl 
 #
 # A filter to line up tables neatly - mainly for use from Vim
+# Toby Thurston -- 04 Aug 2017 
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -235,7 +236,7 @@ sub set_output_form {
     my $form_name = shift;
     if    ($form_name eq "tex")   { $separator = ' & '; $eol_marker = '\\cr' }
     elsif ($form_name eq "latex") { $separator = ' & '; $eol_marker = '\\\\' }
-    elsif ($form_name eq "md")    { $separator = ' | '; $eol_marker = ' |' }
+    elsif ($form_name eq "md")    { $separator = ' | '; $eol_marker = q{}    }
     elsif ($form_name eq "csv")   { $separator = q{,} ; $eol_marker = q{}    }
     elsif ($form_name eq "tsv")   { $separator = "\t" ; $eol_marker = q{}    }
     elsif ($form_name eq "html")  { $separator = '<td>'; $eol_marker = q{}   }
@@ -266,7 +267,6 @@ sub sort_rows {
         sort_rows_by_column($col_list) 
     }
 }
-
 
 sub sort_rows_by_column {
     my $col = shift;
@@ -710,10 +710,15 @@ sub base {
 # to normal Gregorian calendar rules.  Like date('s',base,'b')
 # but allows for negative base numbers, and returns y m d as a
 # list.
+#
 sub date {
-    my ($d) = @_;
+    my ($d) = @_ || (0);
     my ($y, $m) = (0,0);
     $d = floor($d);
+    # Assume anything less than 1000 is a delta on today. (including negative numbers).
+    if ($d < 1000) {
+        $d += base();
+    }
     my $s = floor($d/146097); $d=$d-$s*146097;
     if ($d == 146096) { ($y, $m, $d) = ($s*400+400, 12, 31) } # special case 1
     else {
@@ -1095,6 +1100,9 @@ and "arr a{date(base(a)+140)}" will add 20 weeks to each date
     2011-03-19  2011-08-06 
     2011-07-05  2011-11-22 
 
+As a convenience is the number given to "date()" is less than 1000, then it's assumed that you mean
+a delta on today rather than a day in the pre-Christian era.  So "date(70)" will produce the date in 10 weeks time, 
+and "date(-91)" will give you the date three months ago, and so on.  "date()" produces today's date.
 
 Note: dates will also be recognized in the form yyyymmdd or yyyy/mm/dd, etc.  The exact matching expression is
 
@@ -1292,7 +1300,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 02 Jun 2017 
+Toby Thurston -- 04 Aug 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
