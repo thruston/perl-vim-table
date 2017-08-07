@@ -1,7 +1,7 @@
 #!/usr/bin/perl 
 #
 # A filter to line up tables neatly - mainly for use from Vim
-# Toby Thurston -- 04 Aug 2017 
+# Toby Thurston -- 07 Aug 2017 
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -686,7 +686,7 @@ sub utos {
 
 # Convert yyyy-mm-dd to base date assuming Gregorian calendar rules
 sub base {
-    my ($date) = @_;
+    my $date = shift;
     my ($y,$m,$d);
     if (!defined $date || $date eq q{}) {
         (undef, undef, undef, $d, $m, $y) = localtime ;
@@ -712,9 +712,10 @@ sub base {
 # list.
 #
 sub date {
-    my ($d) = @_ || (0);
+    my $d = shift || 0;
     my ($y, $m) = (0,0);
     $d = floor($d);
+
     # Assume anything less than 1000 is a delta on today. (including negative numbers).
     if ($d < 1000) {
         $d += base();
@@ -741,21 +742,24 @@ sub date {
 }
 
 # returns 01-12 from January-December
-sub month_number {
-    my ($s) = @_;
+sub monthnumber {
+    my $s = shift;
     my $m = index("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC",uc(substr($s,0,3)));
     return sprintf "%02d", $m/4+1;
 }
 
-sub make_date {
+# parse a date into sortable form -- NB no _ in the function name
+sub makedate {
     my $s = shift;
     if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
-        my $m = month_number($2);
+        my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
-        return date(base("$3-$m-$d"))
+        my $date = "$3-$m-$d";
+        my $base = base($date);
+        return date($base);
     }
     elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
-        return date(base("$3-$2-$1"))
+        return date(base("$3-$2-$1"));
     }
     else {
         return $s;
@@ -765,7 +769,7 @@ sub make_date {
 # return months since Jan 2000 from mmm-yy
 sub mondex {
     my ($s) = @_;
-    my $m = month_number($s);
+    my $m = monthnumber($s);
     my $y = substr($s,4,2);
     return 12*$y+($m-1)
 }
