@@ -83,6 +83,10 @@ elsif ($delim =~ /\A[a-z]{2,}\Z/xms) {
     $separator = q{  };
     $delim = qr/\s{2,}/xms;
 }
+elsif ($delim eq '|') {
+    $separator = '|';
+    $delim = qr/\|/xms;
+}
 else {
     $separator = qq{$delim };
     $delim     = qr/$delim/xms;
