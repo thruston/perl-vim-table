@@ -1,6 +1,7 @@
-#!/usr/bin/perl 
+#!/usr/bin/perl
 #
 # A filter to line up tables neatly - mainly for use from Vim
+# Toby Thurston -- 22 Aug 2017
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -21,7 +22,9 @@
 #        make tex | latex | plain | csv | tsv | md   output in tex etc form
 #        label           label columns with letters
 #        wrap n          wrap columns in long table n times (default=2)
-#        unwrap n        unwrap cols in wide table (default=half number of cols) 
+#        unwrap n        unwrap cols in wide table (default=half number of cols)
+#        zip n           zip n rows together
+#        unzip n         unzip into n * the current number of rows & 1/n columns.
 #
 # For full documentaion read (or better still extract) the POD at the end
 
@@ -31,7 +34,7 @@ use warnings;
 use utf8; # for £ signs
 use open qw[ :std :utf8 ];
 
-use List::Util qw(min max sum shuffle);   
+use List::Util qw(min max sum shuffle);
 use Math::Prime::Util qw(factor);
 use Math::Round qw(nearest);
 use Math::SigFigs;
@@ -39,7 +42,7 @@ use POSIX qw(floor ceil);
 use Statistics::Descriptive;    # used for add functions
 
 # following Cowlishaw, TRL p.136, but excluding octal (leading 0 and no point) but including 0 itself
-#                     sign?    mantissa-------------->  exponent? 
+#                     sign?    mantissa-------------->  exponent?
 my $Number_atom = qr{ [-+]? (?:\d+\.\d*|\.\d+|0|[1-9]\d*) (?:E[-+]?\d+)? }ixmso;
 my $Number_pattern   = qr{\A $Number_atom \Z}ixmso;
 my $Interval_pattern = qr{\A\( ( $Number_atom ) \, ( $Number_atom ) \)\Z}ixsmo;
@@ -61,6 +64,8 @@ my %Action_for = (
     flow    => \&reshape_table,
     wrap    => \&wrap_table,
     unwrap  => \&unwrap_table,
+    zip     => \&zip_table,
+    unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
 );
 
@@ -74,13 +79,17 @@ my $delim = @agenda ? shift @agenda : 2;
 my $separator;
 
 if ($delim =~ /\A[1-9]\Z/xms) {
-    $separator = q{ } x $delim; 
+    $separator = q{ } x $delim;
     $delim = qr/\s{$delim,}/xms;
 }
 elsif ($delim =~ /\A[a-z]{2,}\Z/xms) {
     unshift @agenda, $delim;
     $separator = q{  };
     $delim = qr/\s{2,}/xms;
+}
+elsif ($delim eq '|') {
+    $separator = '|';
+    $delim = qr/\|/xms;
 }
 else {
     $separator = qq{$delim };
@@ -91,8 +100,8 @@ my $indent = 0;
 my $eol_marker = q{};
 
 # Read the data from stdin unless it's connected to the terminal.
-# For normal usage from VIM STDIN will *not* be connected to the terminal, 
-# but will have the input lines we need.  For testing, we can run "perl table.pl" 
+# For normal usage from VIM STDIN will *not* be connected to the terminal,
+# but will have the input lines we need.  For testing, we can run "perl table.pl"
 # from the command line: in this situation we *don't* want to wait for STDIN.
 my @input_lines = -t STDIN ? () : <STDIN>;
 
@@ -116,12 +125,12 @@ my $Table = { rows => 0, cols => 0 };
 for (@input_lines) {
     s/^\s*//; # remove leading space
     s/\s*$//; # remove trailing space
-    s/\t/  /g; # remove tabs 
+    s/\t/  /g; # remove tabs
     if ( $eol_marker ne q{} ) {
         $_ =~ s/\s*\Q$eol_marker\E\s*//iox;
     }
     if ( /^$/ || /$Hrule_pattern/ || /^\\noalign/ || /^\\intertext/ || /^\#/ ) {
-        push @{$Table->{specials}->[$Table->{rows}]}, $_; 
+        push @{$Table->{specials}->[$Table->{rows}]}, $_;
         next;
     }
     my @cells = split $delim;
@@ -141,7 +150,7 @@ for (@input_lines) {
         $i++;
     }
     push @{$Table->{data}}, \@cells ;
-    $Table->{rows}++;   
+    $Table->{rows}++;
     $Table->{cols} = max($Table->{cols},scalar @cells);
 }
 
@@ -159,7 +168,7 @@ while (@agenda) {
     else {
         warn "> $verb is not defined.  Try one of:\n";
         warn join " ", ">", keys %Action_for, "\n";
-    }    
+    }
 }
 
 # work out the widths and alignments, and add back any required £ signs
@@ -210,8 +219,8 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
     for (my $c=0; $c<$Table->{cols}; $c++ ) {
         if (defined $Table->{data}->[$r][$c]) {
             my $val = $Table->{data}->[$r][$c];
-            my $wd = $separator eq q{,} ? length($val) : 
-                     $separator eq "\t" ? length($val) : 
+            my $wd = $separator eq q{,} ? length($val) :
+                     $separator eq "\t" ? length($val) :
                      $widths[$c];
             if ( $separator eq q{,} && index($val,$separator)>0) {
                 $val = q{"} . $val . q{"};
@@ -220,7 +229,7 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
         }
         $out .=  $separator;
     }
-    $out =~ s/$separator\Z/ $eol_marker/;
+    $out =~ s/\Q$separator\E\Z/ $eol_marker/;
     if ($separator eq '<td>') { # hack for html form
         $out = "<tr><td>$out";
     }
@@ -235,7 +244,7 @@ sub set_output_form {
     my $form_name = shift;
     if    ($form_name eq "tex")   { $separator = ' & '; $eol_marker = '\\cr' }
     elsif ($form_name eq "latex") { $separator = ' & '; $eol_marker = '\\\\' }
-    elsif ($form_name eq "md")    { $separator = ' | '; $eol_marker = ' |' }
+    elsif ($form_name eq "md")    { $separator = ' | '; $eol_marker = q{}    }
     elsif ($form_name eq "csv")   { $separator = q{,} ; $eol_marker = q{}    }
     elsif ($form_name eq "tsv")   { $separator = "\t" ; $eol_marker = q{}    }
     elsif ($form_name eq "html")  { $separator = '<td>'; $eol_marker = q{}   }
@@ -249,24 +258,23 @@ sub transpose {
         for my $i (0 .. $Table->{cols}-1) {
             push(@{$transposed_tab[$i]}, $row->[$i] );
         }
-    } 
+    }
     $Table->{data} = \@transposed_tab;
-    @$Table{'rows','cols'} = @$Table{'cols','rows'}; 
+    @$Table{'rows','cols'} = @$Table{'cols','rows'};
 }
 
 # Sort by column.  Create an extra temp col with "arr" for fancy sorting.
 sub sort_rows {
-    my $col_list = shift; 
+    my $col_list = shift;
     if ($col_list =~ m{[a-zA-Z]+}xmsio) {
         for my $c (reverse split //, $col_list) {
             sort_rows_by_column($c)
         }
     }
     else {
-        sort_rows_by_column($col_list) 
+        sort_rows_by_column($col_list)
     }
 }
-
 
 sub sort_rows_by_column {
     my $col = shift;
@@ -278,22 +286,22 @@ sub sort_rows_by_column {
     elsif ($col =~ /^\d+$/)   { $col -= 1 } # 0 indexed
     elsif ($col =~ /^-\d+$/)  { $col = $Table->{cols}+1+$col }
     else                      { $col = 0 }
-   
-    # check bounds 
+
+    # check bounds
     $col = $col >= $Table->{cols} ? $Table->{cols}-1
          : $col <  0            ? 0
          :                        $col;
-    
+
     my @sorted;
 
     if ($reverse) {
         @sorted = map  { $_->[0] }
-                  sort { $b->[1] <=> $a->[1] || $b->[2] cmp $a->[2] } 
+                  sort { $b->[1] <=> $a->[1] || $b->[2] cmp $a->[2] }
                   map  { [$_, as_number_reversed($_->[$col]), uc($_->[$col]||"")] } @{$Table->{data}};
     }
     else {
         @sorted = map  { $_->[0] }
-                  sort { $a->[1] <=> $b->[1] || $a->[2] cmp $b->[2] } 
+                  sort { $a->[1] <=> $b->[1] || $a->[2] cmp $b->[2] }
                   map  { [$_, as_number($_->[$col]), uc($_->[$col]||"")] }  @{$Table->{data}};
     }                                   # or "" to allow for blank cells...
 
@@ -390,7 +398,7 @@ sub append_new_rows {
     if ($alpha > $omega) {
         ($omega, $alpha) = ($alpha, $omega);
     }
-        
+
     for my $n ($alpha .. $omega) {
         push @{$Table->{data}}, [ ($n) ];
         $Table->{rows}++;
@@ -411,12 +419,12 @@ sub reshape_table {
         make_long_table()
     }
     elsif ( $direction eq "wide" ) {
-        make_wide_table() 
+        make_wide_table()
     }
     else {
-        if ($Table->{cols}==3) { 
-            make_wide_table() 
-        } 
+        if ($Table->{cols}==3) {
+            make_wide_table()
+        }
         else {
             make_long_table()
         }
@@ -424,7 +432,7 @@ sub reshape_table {
 }
 
 sub make_long_table {
-    
+
     my @long_tab = ();
     my $header_row = shift @{$Table->{data}};
 
@@ -433,7 +441,7 @@ sub make_long_table {
     for my $row ( @{$Table->{data}} ) {
         my $group_value = $row->[0];
         for my $i (1..(@$row-1) ) {
-            push @long_tab, [ ( $group_value, $header_row->[$i], $row->[$i] ) ]; 
+            push @long_tab, [ ( $group_value, $header_row->[$i], $row->[$i] ) ];
         }
     }
 
@@ -527,12 +535,12 @@ sub round_cols {
 sub arrange_cols {
     my $permutation = shift;
     return unless $permutation;
-     
+
     if ( $permutation =~ m{\A~} ) {
-        $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols}) 
+        $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols})
                      . substr($permutation, 1);
     }
-    
+
     my %cumulative_sum_of = ();
     for (my $r = 0; $r < $Table->{rows}; $r++ ) {
         my $new_row_ref;
@@ -541,17 +549,17 @@ sub arrange_cols {
         for (my $c=0; $c<$Table->{cols}; $c++ ) {
             my $value = $Table->{data}->[$r]->[$c] || 0;
             $cumulative_sum_of{$key} += $value if $value =~ m{$Number_pattern};
-            if ($value =~ /$Number_pattern/ && $value<0 ) { 
+            if ($value =~ /$Number_pattern/ && $value<0 ) {
                 $value = "($value)"
             }
             elsif ($value =~ /^([.1234567890]+)([BKMG])$/ ) {
                 $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
-                    : $2 eq 'M' ? 1048576 
+                    : $2 eq 'M' ? 1048576
                     : $2 eq 'K' ? 1024
                     : 1);
             }
-            elsif ($value !~ /$Number_pattern/)  { 
-                $value = "'$value'"   
+            elsif ($value !~ /$Number_pattern/)  {
+                $value = "'$value'"
             }
             $value_for{$key} = $value;
             $key++; # bump the column index
@@ -570,7 +578,7 @@ sub arrange_cols {
                     my @tokens = $m =~ m/[a-z]+|[A-Z]+|./g;
                     for my $t (@tokens) {
                         if ( exists $value_for{$t} ) {
-                            $t = $value_for{$t} 
+                            $t = $value_for{$t}
                         }
                         elsif ( exists $cumulative_sum_of{lc $t} ) {
                             $t = $cumulative_sum_of{lc $t}
@@ -594,11 +602,11 @@ sub wrap_table {
     my $n = shift || 2;
     return unless $n > 1;
     return unless $n < $Table->{rows}*$Table->{cols};
-    
+
     my @wide_tab = ();
     my $new_cols = $Table->{cols} * $n;
     my $new_rows = ceil($Table->{rows}/$n);
-  
+
     for (my $r=0; $r<$new_rows; $r++ ) {
         my @new_row = ();
         for (my $i=0; $i<$n; $i++ ) {
@@ -610,9 +618,9 @@ sub wrap_table {
     }
 
     $Table->{data} = \@wide_tab;
-    $Table->{rows} = $new_rows; 
+    $Table->{rows} = $new_rows;
     $Table->{cols} = $new_cols;
-    
+
 }
 
 sub unwrap_table {
@@ -638,9 +646,51 @@ sub unwrap_table {
     }
 
     $Table->{data} = \@thin_tab;
-    $Table->{rows} = $new_rows; 
+    $Table->{rows} = $new_rows;
     $Table->{cols} = $new_cols;
-    
+
+}
+
+sub zip_table {
+    my $n = shift || 2;
+    my @new_table = ();
+    my $new_cols = $Table->{cols} * $n;
+    my $new_rows = ceil($Table->{rows} / $n);
+
+    for (my $r=0; $r<$new_rows; $r++ ) {
+        my @new_row = ();
+        for (my $c=0; $c<$new_cols; $c++ ) {
+            my $old_r = $n*$r + floor($c / $Table->{cols});
+            my $old_c = $c % $Table->{cols};
+            push @new_row, $Table->{data}->[$old_r][$old_c];
+        }
+        push @new_table, [ @new_row ];
+    }
+
+    $Table->{data} = \@new_table;
+    $Table->{rows} = $new_rows;
+    $Table->{cols} = $new_cols;
+}
+
+sub unzip_table {
+    my $n = shift || 2;
+    my @new_table = ();
+    my $new_cols = ceil($Table->{cols} / $n);
+    my $new_rows = $Table->{rows} * $n;
+
+    for (my $r=0; $r<$new_rows; $r++ ) {
+        my @new_row = ();
+        for (my $c=0; $c<$new_cols; $c++ ) {
+            my $old_r = floor($r / $n);
+            my $old_c = $c + ($r % $n) * ceil($Table->{cols} / $n);
+            push @new_row, $Table->{data}->[$old_r][$old_c];
+        }
+        push @new_table, [ @new_row ];
+    }
+
+    $Table->{data} = \@new_table;
+    $Table->{rows} = $new_rows;
+    $Table->{cols} = $new_cols;
 }
 
 # Useful functions
@@ -657,7 +707,7 @@ sub dow {
     }
     if ($base =~ $Number_pattern) {
         # Note that in Perl % always gives an integer even if base is a float
-        return qw(Mon Tue Wed Thu Fri Sat Sun)[$base%7]  
+        return qw(Mon Tue Wed Thu Fri Sat Sun)[$base%7]
     }
     return "DoW($base)";
 }
@@ -686,7 +736,7 @@ sub utos {
 
 # Convert yyyy-mm-dd to base date assuming Gregorian calendar rules
 sub base {
-    my ($date) = @_;
+    my $date = shift;
     my ($y,$m,$d);
     if (!defined $date || $date eq q{}) {
         (undef, undef, undef, $d, $m, $y) = localtime ;
@@ -696,7 +746,7 @@ sub base {
     elsif ($date =~ $Date_pattern ) {
         ($y, $m, $d) = ($1, $2, $3);
         $m -=3;
-    } 
+    }
     else {
         return "Base($date)";
     }
@@ -710,10 +760,16 @@ sub base {
 # to normal Gregorian calendar rules.  Like date('s',base,'b')
 # but allows for negative base numbers, and returns y m d as a
 # list.
+#
 sub date {
-    my ($d) = @_;
+    my $d = shift || 0;
     my ($y, $m) = (0,0);
     $d = floor($d);
+
+    # Assume anything less than 1000 is a delta on today. (including negative numbers).
+    if ($d < 1000) {
+        $d += base();
+    }
     my $s = floor($d/146097); $d=$d-$s*146097;
     if ($d == 146096) { ($y, $m, $d) = ($s*400+400, 12, 31) } # special case 1
     else {
@@ -737,7 +793,7 @@ sub date {
 
 # returns 01-12 from January-December
 sub monthnumber {
-    my ($s) = @_;
+    my $s = shift;
     my $m = index("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC",uc(substr($s,0,3)));
     return sprintf "%02d", $m/4+1;
 }
@@ -748,10 +804,12 @@ sub makedate {
     if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
         my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
-        return date(base("$3-$m-$d"))
+        my $date = "$3-$m-$d";
+        my $base = base($date);
+        return date($base);
     }
     elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
-        return date(base("$3-$2-$1"))
+        return date(base("$3-$2-$1"));
     }
     else {
         return $s;
@@ -796,7 +854,7 @@ __END__
 
 =pod
 
-=head1 NAME 
+=head1 NAME
 
 Table --- a filter to line up tables nicely
 
@@ -812,12 +870,12 @@ text editor such as Vim or Emacs or similar. You will get familiar with the
 facilities for arranging code and paragraphs of plain text.  Eventually you will
 need to create a table of data or other information, something like this
 
-      event  eruption  waiting 
-          1     3.600       79 
-          2     1.800       54 
-          3     3.333       74 
-          4     2.283       62 
-          5     4.533       85 
+      event  eruption  waiting
+          1     3.600       79
+          2     1.800       54
+          3     3.333       74
+          4     2.283       62
+          5     4.533       85
 
 and you may find that your editor has some useful facilities for working in "block"
 mode that help to manage the table.  But you might also find that the facilities are
@@ -826,33 +884,33 @@ really didn't want to load the data into a spreadsheet or a statistics system li
 R; you just want the simple totals.   That's what table.pl is for.  Calling ":Table add"
 creates this:
 
-      event  eruption  waiting 
-          1     3.600       79 
-          2     1.800       54 
-          3     3.333       74 
-          4     2.283       62 
-          5     4.533       85 
-         15    15.549      354 
+      event  eruption  waiting
+          1     3.600       79
+          2     1.800       54
+          3     3.333       74
+          4     2.283       62
+          5     4.533       85
+         15    15.549      354
 
 OK, that's not perfect, but all you have to do now is change that 15 to "Sum" (or just
-undo the last change to get rid of the new line or whatever).  
+undo the last change to get rid of the new line or whatever).
 
 Table.pl also lets you transpose a table (to get this...)
 
-      event         1      2      3      4      5 
-      eruption  3.600  1.800  3.333  2.283  4.533 
-      waiting      79     54     74     62     85 
+      event         1      2      3      4      5
+      eruption  3.600  1.800  3.333  2.283  4.533
+      waiting      79     54     74     62     85
 
 as well as sort by any column in the table, rearrange the columns, delete columns,
 or add new columns computed from the others.  It can't do everything you can do in a
 spreadsheet but it can do most of the simple things, and you can use it right in the
-middle of your favourite editor. 
+middle of your favourite editor.
 
 =head2 Design
 
 The overall flow is as follows
 
-1. Deal with the command line in a nice flexible way.  
+1. Deal with the command line in a nice flexible way.
 
 2. Read <STDIN> and parse each line into a row of table cells.
 
@@ -862,11 +920,11 @@ The overall flow is as follows
 
 5. Print the table neatly to <STDOUT>
 
-Steps 4 and 5 tend to be the slowest.  Note that you don't have to supply any verbs; 
-so in this case step 3 takes no time at all, and the default action is therefore just 
+Steps 4 and 5 tend to be the slowest.  Note that you don't have to supply any verbs;
+so in this case step 3 takes no time at all, and the default action is therefore just
 to line up your table neatly.  Text columns are aligned left, numeric columns aligned right.
 
-=head1 USAGE 
+=head1 USAGE
 
 =head2 Use from the command line
 
@@ -881,37 +939,37 @@ Add a line like the following to your ".vimrc" file.
     :command! -nargs=* -range=% Table <line1>,<line2>!perl ~/perl-vim-table/table.pl <q-args>
 
 which you should adjust appropriately so your perl can find where you put table.pl.
-You can of course use some word other than "Table" as the command name. Take your pick, 
-except that Vim insists on the name starting with an uppercase letter. 
+You can of course use some word other than "Table" as the command name. Take your pick,
+except that Vim insists on the name starting with an uppercase letter.
 
 With this definition, when you type ":Table" in normal mode in Vim, it will call table.pl
 on the current area and replace it with the output.  If you are in Visual Line mode then
 the current area will just be the marked lines.  If you are in Normal mode then the current
-area will be the whole file.  
+area will be the whole file.
 
 From now on, I'm assuming you are using a Vim :Table command to access table.pl
 
-=head2 Use from within VIM or GVim or MacVim, etc 
+=head2 Use from within VIM or GVim or MacVim, etc
 
     :Table [delimiter] [verb [option]]...
 
-Use blank to separate the command line: the delimiter argument and any verbs or options must be 
+Use blank to separate the command line: the delimiter argument and any verbs or options must be
 single blank-separated words.  Any word that looks like a verb will be treated as a verb, even
 if you meant it to be an option.  See below for details.
 
 The delimiter is used to split up each input line into cells.  It can be any string or regular
 expression that's a valid argument to the perl C<split> function.  Except one containing blanks
-or a whole number between 0 and 9.  You can't use blanks (even inside quotes) because of the 
+or a whole number between 0 and 9.  You can't use blanks (even inside quotes) because of the
 simple way that I split up the command line, and so I use whole numbers to mean "split on at least
-that many consecutive blanks" so if you use 1 as an argument the line will be split on every 
+that many consecutive blanks" so if you use 1 as an argument the line will be split on every
 blank space, and so on. The default argument is 2.  This means the line will be split at every occurrence
 of two or more blanks.  This is generally what you want.  Consider this example.
 
-    Item          Amount 
-    First label       23 
-    Second thing      45 
-    Third one         55 
-    Total            123 
+    Item          Amount
+    First label       23
+    Second thing      45
+    Third one         55
+    Total            123
 
 In most circumstances you can just leave the delimiter out and let it default to two or more spaces.
 Incidentally, any tab characters in your input are silently converted to double spaces before parsing.
@@ -926,23 +984,23 @@ You will probably want to use the "undo" function after reading it.
 
 =head2 Verbs
 
-In all the examples below you need to prefix the command with ":Table".  You can string 
-together as many verbs (plus optional arguments) as you like. 
+In all the examples below you need to prefix the command with ":Table".  You can string
+together as many verbs (plus optional arguments) as you like.
 
 =over
 
 =item xp - transpose the table
 
-C<xp> just transposes the entire table. It takes no options.  
+C<xp> just transposes the entire table. It takes no options.
 
-    First   100 
-    Second  200     
-    Third   300 
+    First   100
+    Second  200
+    Third   300
 
-becomes    
+becomes
 
-    First  Second  Third 
-      100     200    300 
+    First  Second  Third
+      100     200    300
 
 It's often useful in combination with verbs that operate on columns like C<sort> or C<add>.
 So the sequence "C<xp add xp>" will give you row totals, for example.
@@ -952,9 +1010,9 @@ So the sequence "C<xp add xp>" will give you row totals, for example.
 C<add> adds the total to the foot of a column.  Or the mean, standard deviation, variance, etc.
 The optional argument can be any valid method for a Statistics::Descriptive::Full object.  If you omit
 the optional argument it defaults to "sum".   If you put "sd" it will be expanded to "standard_deviation",
-similarly "var" is expanded to "variance".   
+similarly "var" is expanded to "variance".
 
-Non-numerical entries in a column are simply ignored.   
+Non-numerical entries in a column are simply ignored.
 
 =item sort [a|b|c|...] - sort on column a|b|etc
 
@@ -965,19 +1023,19 @@ assuming you have fewer than 26 columns).
 
 You can also use numbers, so "sort 2" sorts on the second column, while
 like perl index addressing, "sort -1" means sort on the last column, "sort -2" last but one etc.
-NB *unlike* perl index addressing, "sort 1" sorts the first column not the second. 
+NB *unlike* perl index addressing, "sort 1" sorts the first column not the second.
 (but "sort 0" also sorts on the first column...).  Because sorting is stable in perl, then
 if you want to sort on column b then column a, you can do "sort a sort b" to get the desired
-effect. 
+effect.
 
-=item arr [arrange-expression] - rearrange the columns 
+=item arr [arrange-expression] - rearrange the columns
 
 At it simplest C<arr> lets you rearrange, duplicate, or delete columns.  So if you have a
-four column table then: 
+four column table then:
 
 =over
 
-=item * 
+=item *
 
 "C<arr dabc>" puts the fourth column first
 
@@ -989,7 +1047,7 @@ four column table then:
 
 "C<arr cd>" deletes the first two columns
 
-=item * 
+=item *
 
 "C<arr abc>" keeps only the first three columns
 
@@ -1004,8 +1062,8 @@ then use the regular line editing facilities in Vim to rearrange the rows,
 before transposing them back to columns.   You might also use the C<label> verb
 to add alphabetic labels to the top of all the columns before you start.
 
-Note: Astute readers may spot a problem here.  The sequence "arr add" meaning 
-"delete cols b and c and duplicate col d" won't work because "add" is a 
+Note: Astute readers may spot a problem here.  The sequence "arr add" meaning
+"delete cols b and c and duplicate col d" won't work because "add" is a
 valid verb.  In this case (as similar ones) just put a pair of empty braces
 on the end, like so "arr add{}".
 
@@ -1016,7 +1074,7 @@ You can also insert arbitrary calculated columns by putting an expression in cur
 
 =over
 
-=item * 
+=item *
 
 "C<arr ab{a+b}>" adds a new column that contains the sum of the values in the first two
 
@@ -1024,7 +1082,7 @@ You can also insert arbitrary calculated columns by putting an expression in cur
 
 "C<arr a{a**2}{sqrt(a)}>" adds two new cols with square and square root of the value in col 1.
 
-=item * 
+=item *
 
 "C<arr ~{sqrt(a)}>" keeps all existing cols and adds a new col with the square root of the value in col 1.
 
@@ -1053,49 +1111,52 @@ values in the column from the top of the table to the current row. So given
     Second  2
     Third   3
 
-"C<arr abB>" gives you, 
+"C<arr abB>" gives you,
 
-    First   1  1 
-    Second  2  3 
-    Third   3  6 
+    First   1  1
+    Second  2  3
+    Third   3  6
 
-Note that the upper case letters also work inside a {curly brace} expression, so you can include them in a 
+Note that the upper case letters also work inside a {curly brace} expression, so you can include them in a
 normal expression.
 
 There are also some very simple date routines included.  C<base> returns the number of days
-since 1 Jan in the year 1 (assuming the Gregorian calendar extended backwards).  The argument 
+since 1 Jan in the year 1 (assuming the Gregorian calendar extended backwards).  The argument
 should be blank for today, or in the form "yyyy-mm-dd".  C<date> does the opposite: given
 a number that represents the number of days since the year dot, it returns the date in "yyyy-mm-dd" form.
 There's also C<dow> which takes a date and returns the day of the week, as a three letter string.
 
 So given a table with a column of dates, like this
 
-    2011-01-17  
-    2011-02-23  
-    2011-03-19  
-    2011-07-05  
+    2011-01-17
+    2011-02-23
+    2011-03-19
+    2011-07-05
 
 the command "arr a{dow(a)}" creates this
 
-    2011-01-17  Mon 
-    2011-02-23  Wed 
-    2011-03-19  Sat 
-    2011-07-05  Tue 
+    2011-01-17  Mon
+    2011-02-23  Wed
+    2011-03-19  Sat
+    2011-07-05  Tue
 
 alternatively "arr a{base()-base(a)}" will produce the days from each date to today.
 
-    2011-01-17  1681 
-    2011-02-23  1644 
-    2011-03-19  1620 
-    2011-07-05  1512 
+    2011-01-17  1681
+    2011-02-23  1644
+    2011-03-19  1620
+    2011-07-05  1512
 
 and "arr a{date(base(a)+140)}" will add 20 weeks to each date
 
-    2011-01-17  2011-06-06 
-    2011-02-23  2011-07-13 
-    2011-03-19  2011-08-06 
-    2011-07-05  2011-11-22 
+    2011-01-17  2011-06-06
+    2011-02-23  2011-07-13
+    2011-03-19  2011-08-06
+    2011-07-05  2011-11-22
 
+As a convenience is the number given to "date()" is less than 1000, then it's assumed that you mean
+a delta on today rather than a day in the pre-Christian era.  So "date(70)" will produce the date in 10 weeks time,
+and "date(-91)" will give you the date three months ago, and so on.  "date()" produces today's date.
 
 Note: dates will also be recognized in the form yyyymmdd or yyyy/mm/dd, etc.  The exact matching expression is
 
@@ -1106,7 +1167,7 @@ that you can use dates like 2011-12-32.  You'll find that date(base('2011-12-32'
 
 To get dates in this sorted format (which is the ISO standard by the way), you can use C<etos> and C<utos>.
 C<etos> takes European dates in the form dd/mm/yyyy and returns yyyy-mm-dd; C<utos> takes US dates in the form mm/dd/yyyy.
-Note that they still both expect full year numbers.  There's only so much automation that's worth while.  
+Note that they still both expect full year numbers.  There's only so much automation that's worth while.
 
 There's also a C<month_number> function that takes a string that looks like a month and returns an appropriate number.
 
@@ -1117,7 +1178,7 @@ As delivered table.pl calculates with 12 decimal places, so you might need to ro
 This is what C<dp> does.  The required argument is a string of digits indicating how many decimal places
 between 0 and 9 you want for each column.  There's no default, it just does nothing with no argument, but
 if your string is too short the last digit is repeated as necessary.  So to round everything to a whole number
-do "dp 0".  To round the first col to 0, the second to 3 and the rest to 4 do "dp 034", and so on. 
+do "dp 0".  To round the first col to 0, the second to 3 and the rest to 4 do "dp 034", and so on.
 
 =item make [plain|tex|latex|csv|tsv] - set the output format
 
@@ -1127,7 +1188,7 @@ with the default two spaces.   Or you might want explicitly to make a plain tabl
 
 Note that this only affects the rows, it won't magically generate the TeX or LaTeX table preamble.
 
-The CSV option should produce something that you can easily import into Excel or similar spreadsheets. 
+The CSV option should produce something that you can easily import into Excel or similar spreadsheets.
 However beware that it's very simple: you need to ensure that there are no commas or quotes in the data.
 To get back from CSV form to plain form do C<Table , make plain>. (Provided there were no commas in your data).
 
@@ -1140,18 +1201,18 @@ This is used to take a square table and make it a long one.  It's best explained
 
 Consider the following table.
 
-    Exposure category     Lung cancer  No lung cancer 
-    Asbestos exposure               6              51 
-    No asbestos exposure           52             941 
+    Exposure category     Lung cancer  No lung cancer
+    Asbestos exposure               6              51
+    No asbestos exposure           52             941
 
 Nice and compact, but the values are in a 2x2 matrix rather than a useful column.  Sometimes you want
 them to look like this.
 
-    Exposure category     Key             Value 
-    Asbestos exposure     Lung cancer         6 
-    Asbestos exposure     No lung cancer     51 
-    No asbestos exposure  Lung cancer        52 
-    No asbestos exposure  No lung cancer    941 
+    Exposure category     Key             Value
+    Asbestos exposure     Lung cancer         6
+    Asbestos exposure     No lung cancer     51
+    No asbestos exposure  Lung cancer        52
+    No asbestos exposure  No lung cancer    941
 
 And that's what "reshape long" does.  Here's another example.
 
@@ -1167,53 +1228,76 @@ And that's what "reshape long" does.  Here's another example.
 
 With this input, "reshape wide" gives you this
 
-    Region    Q1    Q2    Q3    Q4 
-    East    1200  1100  1500  2200 
-    West    2200  2500  1990  2600 
+    Region    Q1    Q2    Q3    Q4
+    East    1200  1100  1500  2200
+    West    2200  2500  1990  2600
 
-Notice that parts of the headings may get lost in transposition. 
+Notice that parts of the headings may get lost in transposition.
 
 =item wrap [n] | unwrap [n]
 
 Another way to reshape a table.  Given
 
-    East  Q1  1200 
-    East  Q2  1100 
-    East  Q3  1500 
-    East  Q4  2200 
-    West  Q1  2200 
-    West  Q2  2500 
-    West  Q3  1990 
-    West  Q4  2600 
+    East  Q1  1200
+    East  Q2  1100
+    East  Q3  1500
+    East  Q4  2200
+    West  Q1  2200
+    West  Q2  2500
+    West  Q3  1990
+    West  Q4  2600
 
-as input, "wrap" gives you 
+as input, "wrap" gives you
 
-    East  Q1  1200  West  Q1  2200 
-    East  Q2  1100  West  Q2  2500 
-    East  Q3  1500  West  Q3  1990 
-    East  Q4  2200  West  Q4  2600 
+    East  Q1  1200  West  Q1  2200
+    East  Q2  1100  West  Q2  2500
+    East  Q3  1500  West  Q3  1990
+    East  Q4  2200  West  Q4  2600
 
 while "wrap 3" gives
 
-    East  Q1  1200  East  Q4  2200  West  Q3  1990 
-    East  Q2  1100  West  Q1  2200  West  Q4  2600 
-    East  Q3  1500  West  Q2  2500       
+    East  Q1  1200  East  Q4  2200  West  Q3  1990
+    East  Q2  1100  West  Q1  2200  West  Q4  2600
+    East  Q3  1500  West  Q2  2500
 
 "unwrap" does the opposite - the option is the number of columns you want in the new output, and defaults
 to half the number of columns in the input.
 
+=item zip [n] | unzip [n]
+
+Re-shape a table row by row.  Given
+
+    Q1  East  1200
+    Q1  West  2200
+    Q2  East  1100
+    Q2  West  2500
+    Q3  East  1500
+    Q3  West  1990
+    Q4  East  2200
+    Q4  West  2600
+
+as input, "zip" gives you
+
+    Q1  East  1200  Q1  West  2200
+    Q2  East  1100  Q2  West  2500
+    Q3  East  1500  Q3  West  1990
+    Q4  East  2200  Q4  West  2600
+
+"unzip" does the opposite.  The option is the number of rows to combine.  The default is 2, so that
+you zip every other row, and unzip the table in half (as it were).
+
 =item label - add alphabetic labels to all the columns
 
-C<label> simply adds an alphabetic label at the top of the 
+C<label> simply adds an alphabetic label at the top of the
 columns to help you work out which is which when rearranging.
 
 =item gen - generate rows
 
-C<gen a..b> where C<a> and C<b> are integers, and C<..> is any non-numeric character sequence, 
-will generate a table with a single column of integers running from C<a> to C<b>.  C<gen 10> is 
+C<gen a..b> where C<a> and C<b> are integers, and C<..> is any non-numeric character sequence,
+will generate a table with a single column of integers running from C<a> to C<b>.  C<gen 10> is
 interpreted as C<gen 1..10>.
 
-If the table already has some data, then the single column will be appended as new rows at the bottom 
+If the table already has some data, then the single column will be appended as new rows at the bottom
 of the existing column "a".
 
 =item shuffle - rearrange the rows with a Fisher-Yates shuffle.
@@ -1236,21 +1320,21 @@ produces (for example):
 
 =head2 Special rows
 
-Any blank lines in your table are saved as special lines and reinserted at the 
+Any blank lines in your table are saved as special lines and reinserted at the
 appropriate place on output. So if you have a long table you can use blanks
 to separate blocks of data.  Similarly any lines consisting entirely of "-" characters
-are treated as horizontal rules and reinserted (appropriately sized) on output. 
-Any lines starting with "#" are treated as comment lines, and again reinserted in the 
-right places on output. 
+are treated as horizontal rules and reinserted (appropriately sized) on output.
+Any lines starting with "#" are treated as comment lines, and again reinserted in the
+right places on output.
 
 =head2 Support for TeX and LaTeX
 
-C<table.pl> also supports tables neatly in TeX and LaTeX documents. 
-To convert a plain table to TeX format use "make tex".  If you already have 
+C<table.pl> also supports tables neatly in TeX and LaTeX documents.
+To convert a plain table to TeX format use "make tex".  If you already have
 a TeX table then C<table.pl> automatically spots the TeX delimiters "&" and "\cr",
 and puts them back in when it formats the output. Everything else works as described above.
-If you convert from plain to TeX format, then any horizontal rules will be converted 
-to the appropriate bit of TeX input to get a neat output rule.    No attempt is made to create 
+If you convert from plain to TeX format, then any horizontal rules will be converted
+to the appropriate bit of TeX input to get a neat output rule.    No attempt is made to create
 a preamble for you.
 
 =head1 REQUIRED ARGUMENTS
@@ -1263,13 +1347,13 @@ See the detailed description of the verbs and options in the L<DESCRIPTION> sect
 
 =head1 DIAGNOSTICS
 
-Some errors will generate extra lines in the output, explaining what went wrong. 
-Bad errors may generate only lines of errors instead of your table data. 
-You can always get rid of them and back to a known postion by using the editor's C<undo> command. 
+Some errors will generate extra lines in the output, explaining what went wrong.
+Bad errors may generate only lines of errors instead of your table data.
+You can always get rid of them and back to a known postion by using the editor's C<undo> command.
 
 =head1 EXIT STATUS
 
-Not set. 
+Not set.
 
 =head1 CONFIGURATION
 
@@ -1279,13 +1363,13 @@ None.
 
 Perl 5.08 or better.
 
-Note that you don't actually need VIM compiled with Perl support, table.pl works entirely as an 
-external filter. 
+Note that you don't actually need VIM compiled with Perl support, table.pl works entirely as an
+external filter.
 
 =head1 INCOMPATIBILITIES
 
 Largely *because* it works as an external filter, table.pl is not very "Vim-like", so dyed-in-the-wool
-Vim users may prefer other facilities for playing with columns of data. 
+Vim users may prefer other facilities for playing with columns of data.
 
 =head1 BUGS AND LIMITATIONS
 
@@ -1293,11 +1377,11 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 02 Jun 2017 
+Toby Thurston -- 22 Aug 2017
 
 =head1 LICENSE AND COPYRIGHT
 
-Same terms as Perl and VIM.  Free to use, but not to pass off as your own.  
+Same terms as Perl and VIM.  Free to use, but not to pass off as your own.
 No warranty expressed or implied.
 
 =cut
