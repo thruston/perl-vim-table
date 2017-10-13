@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # A filter to line up tables neatly - mainly for use from Vim
-# Toby Thurston -- 22 Aug 2017
+# Toby Thurston -- 28 Sep 2017 
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -91,6 +91,9 @@ elsif ($delim eq '|') {
     $separator = '|';
     $delim = qr/\|/xms;
 }
+elsif ($delim eq ',') {
+    $separator = ', ';
+}
 else {
     $separator = qq{$delim };
     $delim     = qr/$delim/xms;
@@ -133,7 +136,7 @@ for (@input_lines) {
         push @{$Table->{specials}->[$Table->{rows}]}, $_;
         next;
     }
-    my @cells = split $delim;
+    my @cells = $delim eq ',' ? csv_split($_) : split $delim;
     my $i=0;
     for (@cells) {
         if (/^([£€]\s?)/) {
@@ -177,7 +180,7 @@ my @aligns = (0) x $Table->{cols};
 for (my $c=0; $c<$Table->{cols}; $c++ ) {
     for (my $r=0; $r<$Table->{rows}; $r++ ) {
         next unless defined $Table->{data}->[$r][$c];
-        if ( $Table->{data}->[$r][$c] =~ $Number_pattern ) {
+        if ( decomma($Table->{data}->[$r][$c]) =~ $Number_pattern ) {
             $aligns[$c]++;
             if (defined $money_cols[$c] && $money_cols[$c] ne '0') {
                 $Table->{data}->[$r][$c] = $money_cols[$c] . $Table->{data}->[$r][$c];
@@ -239,6 +242,34 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
 }
 
 exit 0;
+
+sub csv_split {
+    my $input = shift;
+    my @out = ();
+    my $in_quote = 0;
+    my $field = '';
+    for my $c ( split //, $input ) {
+        if ($c eq ',' && !$in_quote) {
+            $field =~ s/^\s*//;
+            $field =~ s/\s*$//;
+            $field =~ s/^"//;
+            $field =~ s/"$//;
+            push @out, $field;
+            $field = '';
+            next;
+        }
+        if ($c eq '"') {
+            $in_quote = 1 - $in_quote;
+        }
+        $field .= $c;
+    }
+    $field =~ s/^\s*//;
+    $field =~ s/\s*$//;
+    $field =~ s/^"//;
+    $field =~ s/"$//;
+    push @out, $field;
+    return @out;
+}
 
 sub set_output_form {
     my $form_name = shift;
@@ -530,6 +561,19 @@ sub round_cols {
             }
         }
     }
+}
+
+sub comma {
+    my $cell = shift;
+    $cell = reverse $cell;
+    $cell =~ s/(\d\d\d)(?=\d)(?!\d*\.)/$1,/g;
+    return scalar reverse $cell; 
+}
+
+sub decomma {
+    my $n = shift;
+    $n =~ s/,//g;
+    return $n;
 }
 
 sub arrange_cols {
@@ -850,6 +894,13 @@ sub hhmm {
     return sprintf "%02d:%02d", $m/60, $m%60;
 }
 
+# return sec from h:m:s.ss
+sub sss {
+    my $ts = shift;
+    my ($h, $m, $s) = split ':', $ts;
+    return $s+60*$m+3600*$h;
+}
+
 __END__
 
 =pod
@@ -973,6 +1024,11 @@ of two or more blanks.  This is generally what you want.  Consider this example.
 
 In most circumstances you can just leave the delimiter out and let it default to two or more spaces.
 Incidentally, any tab characters in your input are silently converted to double spaces before parsing.
+
+There is one special case delimiter to assist working with CSV files.  If you specify a comma "," as the
+delimiter, each line will be split up by my C<csv_split> function, that will treat commas inside "double quotes"
+as part of a cell.  This is usually what you want.  If it's not then change the commas to some other character
+and use that as the delimiter.
 
 After the optional delimiter you should specify a sequence of verbs.  If the verb needs an option then
 that goes right after the verb.  Verbs and options are separated by blanks.  The parsing is very simple.
@@ -1188,9 +1244,11 @@ with the default two spaces.   Or you might want explicitly to make a plain tabl
 
 Note that this only affects the rows, it won't magically generate the TeX or LaTeX table preamble.
 
-The CSV option should produce something that you can easily import into Excel or similar spreadsheets.
-However beware that it's very simple: you need to ensure that there are no commas or quotes in the data.
-To get back from CSV form to plain form do C<Table , make plain>. (Provided there were no commas in your data).
+The CSV option should produce something that you can easily import into Excel
+or similar spreadsheets.  However beware that it's not very clever: fields with
+commas in will be enclosed with "double quotes", but my routines are designed
+to be simple rather than fool proof.  To get back from CSV form to plain form
+do C<Table , make plain>, (or just the undo command in Vi). 
 
 The TSV option can be used when you want to import into Word -- you can use Table.. Convert Text to Table...
 using tabs as the column separator
@@ -1307,7 +1365,7 @@ This is implemented using the "shuffle" routine from List::Util.
 Here's a one liner to generate a random 4x4 arrangement of the numbers 1 to 16:
 (start with a blank file)
 
-    :Table gen 16 shuffle wrap wrap
+    :Table gen 16 shuffle wrap 4
 
 produces (for example):
 
@@ -1377,7 +1435,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 22 Aug 2017
+Toby Thurston -- 28 Sep 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
