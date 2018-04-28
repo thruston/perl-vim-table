@@ -67,6 +67,7 @@ my %Action_for = (
     zip     => \&zip_table,
     unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
+    ditto   => \&copy_down, 
 );
 
 # deal with the command line
@@ -576,6 +577,19 @@ sub decomma {
     return $n;
 }
 
+sub copy_down {
+    for (my $r = 0; $r < $Table->{rows}; $r++ ) {
+        for (my $c=0; $c<$Table->{cols}; $c++ ) {
+            if (defined $Table->{data}->[$r]->[$c] 
+                && $r > 0 
+                && $Table->{data}->[$r]->[$c] eq q{"}) {
+                $Table->{data}->[$r]->[$c] = $Table->{data}->[$r-1]->[$c];
+            }
+        }
+    }
+}
+
+
 sub arrange_cols {
     my $permutation = shift;
     return unless $permutation;
@@ -855,9 +869,38 @@ sub makedate {
     elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
         return date(base("$3-$2-$1"));
     }
+    elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([012]\d) \Z}iosmx ) {
+        return date(base("20$3-$2-$1"));
+    }
     else {
         return $s;
     }
+}
+
+sub isoweek {
+    my $s = shift;
+    my $b = base($s);
+    if ( $b =~ /\D/ ) {
+        return $s
+    }
+    my $isoweek_year = substr date($b-3), 0, 4;
+    my $start = first_monday($isoweek_year+1);
+    if ($b < $start) {
+        $start = first_monday($isoweek_year);
+    }
+    else {
+        $isoweek_year++;
+    }
+    my $isoweek_number = 1 + int(($b-$start) / 7);
+    my $isoday = 1 + $b % 7;
+    return sprintf "%d-W%02d-%d", $isoweek_year, $isoweek_number, $isoday; 
+}
+
+sub first_monday {
+    my $y = shift;
+    my $dec28 = base(sprintf("%d1228", $y-1));
+    my $dow = $dec28 % 7;
+    return $dec28 + 7 - $dow;
 }
 
 # return months since Jan 2000 from mmm-yy
