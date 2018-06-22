@@ -860,6 +860,19 @@ sub monthnumber {
     return sprintf "%02d", $m/4+1;
 }
 
+sub hms {
+    my $s = shift;
+    my $H = floor($s/3600); $s = $s - 3600 * $H;
+    my $M = floor($s/60);   $s = $s - 60 * $M;
+    my $S = floor($s);      $s = $s - $S;
+    my $HMS = sprintf "%02d:%02d:%02d", $H, $M, $S;
+    if ($s > 0) {
+        $HMS .= sprintf ".%03d", $s * 1000
+    }
+    return $HMS
+}
+
+
 # parse a date into sortable form -- NB no _ in the function name
 sub makedate {
     my $s = shift;
@@ -875,6 +888,12 @@ sub makedate {
     }
     elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([012]\d) \Z}iosmx ) {
         return date(base("20$3-$2-$1"));
+    }
+    elsif ( $s > 1000000000000 ) {
+        return date(base("1970-01-01") + floor($s/86400000)) . " " . hms(($s % 86400000)/1000)
+    }
+    elsif ( $s > 1000000000 ) {
+        return date(base("1970-01-01") + floor($s/86400)) . " " . hms($s % 86400)
     }
     else {
         return $s;
