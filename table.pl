@@ -592,12 +592,16 @@ sub copy_down {
 
 sub arrange_cols {
     my $permutation = shift;
-    return unless $permutation;
 
     if ( $permutation =~ m{\A~} ) {
         $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols})
                      . substr($permutation, 1);
     }
+    elsif ( $permutation =~ m{\A-([a-z]+)\Z} ) {
+        $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols});
+        $permutation =~ s/$1//;
+    }
+    return unless $permutation;
 
     my %cumulative_sum_of = ();
     for (my $r = 0; $r < $Table->{rows}; $r++ ) {
