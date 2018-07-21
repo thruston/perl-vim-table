@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # A filter to line up tables neatly - mainly for use from Vim
-# Toby Thurston -- 22 Aug 2017
+# Toby Thurston -- 28 Sep 2017 
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -67,6 +67,7 @@ my %Action_for = (
     zip     => \&zip_table,
     unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
+    ditto   => \&copy_down, 
 );
 
 # deal with the command line
@@ -90,6 +91,9 @@ elsif ($delim =~ /\A[a-z]{2,}\Z/xms) {
 elsif ($delim eq '|') {
     $separator = '|';
     $delim = qr/\|/xms;
+}
+elsif ($delim eq ',') {
+    $separator = ', ';
 }
 else {
     $separator = qq{$delim };
@@ -133,7 +137,7 @@ for (@input_lines) {
         push @{$Table->{specials}->[$Table->{rows}]}, $_;
         next;
     }
-    my @cells = split $delim;
+    my @cells = $delim eq ',' ? csv_split($_) : split $delim;
     my $i=0;
     for (@cells) {
         if (/^([£€]\s?)/) {
@@ -177,7 +181,7 @@ my @aligns = (0) x $Table->{cols};
 for (my $c=0; $c<$Table->{cols}; $c++ ) {
     for (my $r=0; $r<$Table->{rows}; $r++ ) {
         next unless defined $Table->{data}->[$r][$c];
-        if ( $Table->{data}->[$r][$c] =~ $Number_pattern ) {
+        if ( decomma($Table->{data}->[$r][$c]) =~ $Number_pattern ) {
             $aligns[$c]++;
             if (defined $money_cols[$c] && $money_cols[$c] ne '0') {
                 $Table->{data}->[$r][$c] = $money_cols[$c] . $Table->{data}->[$r][$c];
@@ -239,6 +243,34 @@ for (my $r=0; $r<$Table->{rows}; $r++ ) {
 }
 
 exit 0;
+
+sub csv_split {
+    my $input = shift;
+    my @out = ();
+    my $in_quote = 0;
+    my $field = '';
+    for my $c ( split //, $input ) {
+        if ($c eq ',' && !$in_quote) {
+            $field =~ s/^\s*//;
+            $field =~ s/\s*$//;
+            $field =~ s/^"//;
+            $field =~ s/"$//;
+            push @out, $field;
+            $field = '';
+            next;
+        }
+        if ($c eq '"') {
+            $in_quote = 1 - $in_quote;
+        }
+        $field .= $c;
+    }
+    $field =~ s/^\s*//;
+    $field =~ s/\s*$//;
+    $field =~ s/^"//;
+    $field =~ s/"$//;
+    push @out, $field;
+    return @out;
+}
 
 sub set_output_form {
     my $form_name = shift;
@@ -532,14 +564,44 @@ sub round_cols {
     }
 }
 
+sub comma {
+    my $cell = shift;
+    $cell = reverse $cell;
+    $cell =~ s/(\d\d\d)(?=\d)(?!\d*\.)/$1,/g;
+    return scalar reverse $cell; 
+}
+
+sub decomma {
+    my $n = shift;
+    $n =~ s/,//g;
+    return $n;
+}
+
+sub copy_down {
+    for (my $r = 0; $r < $Table->{rows}; $r++ ) {
+        for (my $c=0; $c<$Table->{cols}; $c++ ) {
+            if (defined $Table->{data}->[$r]->[$c] 
+                && $r > 0 
+                && $Table->{data}->[$r]->[$c] eq q{"}) {
+                $Table->{data}->[$r]->[$c] = $Table->{data}->[$r-1]->[$c];
+            }
+        }
+    }
+}
+
+
 sub arrange_cols {
     my $permutation = shift;
-    return unless $permutation;
 
     if ( $permutation =~ m{\A~} ) {
         $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols})
                      . substr($permutation, 1);
     }
+    elsif ( $permutation =~ m{\A-([a-z]+)\Z} ) {
+        $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols});
+        $permutation =~ s/$1//;
+    }
+    return unless $permutation;
 
     my %cumulative_sum_of = ();
     for (my $r = 0; $r < $Table->{rows}; $r++ ) {
@@ -798,6 +860,19 @@ sub monthnumber {
     return sprintf "%02d", $m/4+1;
 }
 
+sub hms {
+    my $s = shift;
+    my $H = floor($s/3600); $s = $s - 3600 * $H;
+    my $M = floor($s/60);   $s = $s - 60 * $M;
+    my $S = floor($s);      $s = $s - $S;
+    my $HMS = sprintf "%02d:%02d:%02d", $H, $M, $S;
+    if ($s > 0) {
+        $HMS .= sprintf ".%03d", $s * 1000
+    }
+    return $HMS
+}
+
+
 # parse a date into sortable form -- NB no _ in the function name
 sub makedate {
     my $s = shift;
@@ -811,9 +886,44 @@ sub makedate {
     elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
         return date(base("$3-$2-$1"));
     }
+    elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([012]\d) \Z}iosmx ) {
+        return date(base("20$3-$2-$1"));
+    }
+    elsif ( $s > 1000000000000 ) {
+        return date(base("1970-01-01") + floor($s/86400000)) . " " . hms(($s % 86400000)/1000)
+    }
+    elsif ( $s > 1000000000 ) {
+        return date(base("1970-01-01") + floor($s/86400)) . " " . hms($s % 86400)
+    }
     else {
         return $s;
     }
+}
+
+sub isoweek {
+    my $s = shift;
+    my $b = base($s);
+    if ( $b =~ /\D/ ) {
+        return $s
+    }
+    my $isoweek_year = substr date($b-3), 0, 4;
+    my $start = first_monday($isoweek_year+1);
+    if ($b < $start) {
+        $start = first_monday($isoweek_year);
+    }
+    else {
+        $isoweek_year++;
+    }
+    my $isoweek_number = 1 + int(($b-$start) / 7);
+    my $isoday = 1 + $b % 7;
+    return sprintf "%d-W%02d-%d", $isoweek_year, $isoweek_number, $isoday; 
+}
+
+sub first_monday {
+    my $y = shift;
+    my $dec28 = base(sprintf("%d1228", $y-1));
+    my $dow = $dec28 % 7;
+    return $dec28 + 7 - $dow;
 }
 
 # return months since Jan 2000 from mmm-yy
@@ -848,6 +958,13 @@ sub hhmm {
     my $h = shift;
     my $m = floor($h*60+0.5);
     return sprintf "%02d:%02d", $m/60, $m%60;
+}
+
+# return sec from h:m:s.ss
+sub sss {
+    my $ts = shift;
+    my ($h, $m, $s) = split ':', $ts;
+    return $s+60*$m+3600*$h;
 }
 
 __END__
@@ -973,6 +1090,11 @@ of two or more blanks.  This is generally what you want.  Consider this example.
 
 In most circumstances you can just leave the delimiter out and let it default to two or more spaces.
 Incidentally, any tab characters in your input are silently converted to double spaces before parsing.
+
+There is one special case delimiter to assist working with CSV files.  If you specify a comma "," as the
+delimiter, each line will be split up by my C<csv_split> function, that will treat commas inside "double quotes"
+as part of a cell.  This is usually what you want.  If it's not then change the commas to some other character
+and use that as the delimiter.
 
 After the optional delimiter you should specify a sequence of verbs.  If the verb needs an option then
 that goes right after the verb.  Verbs and options are separated by blanks.  The parsing is very simple.
@@ -1188,9 +1310,11 @@ with the default two spaces.   Or you might want explicitly to make a plain tabl
 
 Note that this only affects the rows, it won't magically generate the TeX or LaTeX table preamble.
 
-The CSV option should produce something that you can easily import into Excel or similar spreadsheets.
-However beware that it's very simple: you need to ensure that there are no commas or quotes in the data.
-To get back from CSV form to plain form do C<Table , make plain>. (Provided there were no commas in your data).
+The CSV option should produce something that you can easily import into Excel
+or similar spreadsheets.  However beware that it's not very clever: fields with
+commas in will be enclosed with "double quotes", but my routines are designed
+to be simple rather than fool proof.  To get back from CSV form to plain form
+do C<Table , make plain>, (or just the undo command in Vi). 
 
 The TSV option can be used when you want to import into Word -- you can use Table.. Convert Text to Table...
 using tabs as the column separator
@@ -1307,7 +1431,7 @@ This is implemented using the "shuffle" routine from List::Util.
 Here's a one liner to generate a random 4x4 arrangement of the numbers 1 to 16:
 (start with a blank file)
 
-    :Table gen 16 shuffle wrap wrap
+    :Table gen 16 shuffle wrap 4
 
 produces (for example):
 
@@ -1377,7 +1501,7 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 22 Aug 2017
+Toby Thurston -- 28 Sep 2017 
 
 =head1 LICENSE AND COPYRIGHT
 
