@@ -68,6 +68,7 @@ my %Action_for = (
     unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
     ditto   => \&copy_down, 
+    nospace => \&remove_spaces_from_cells,
 );
 
 # deal with the command line
@@ -143,10 +144,6 @@ for (@input_lines) {
         if (/^([£€]\s?)/) {
             $money_cols[$i] ||= $1;
             $_ =~ s/$1//;
-        }
-        elsif ( /^\s*\$/ ) {
-            $money_cols[$i] ||= '$';
-            $_ =~ s/\$//;
         }
         else{
             $money_cols[$i] ||= '0';
@@ -614,8 +611,10 @@ sub arrange_cols {
             if ($value =~ /$Number_pattern/ && $value<0 ) {
                 $value = "($value)"
             }
-            elsif ($value =~ /^([.1234567890]+)([BKMG])$/ ) {
-                $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
+            elsif ($value =~ /^([.1234567890]+)([BKMGT])$/ ) {
+                $value = sprintf "%g", $1 * (
+                      $2 eq 'T' ? 1099511627776 
+                    : $2 eq 'G' ? 1073741824
                     : $2 eq 'M' ? 1048576
                     : $2 eq 'K' ? 1024
                     : 1);
@@ -647,6 +646,9 @@ sub arrange_cols {
                         }
                         elsif ( $t eq "_" ) {
                             $t = ".' '."
+                        }
+                        elsif ( $t eq "=" ) {
+                            $t = " eq "
                         }
                     }
                     # evaluate & replace answer with expression on error
@@ -755,6 +757,17 @@ sub unzip_table {
     $Table->{cols} = $new_cols;
 }
 
+sub remove_spaces_from_cells {
+    my $joiner = shift || "";
+    for (my $r = 0; $r < $Table->{rows}; $r++ ) {
+        for (my $c=0; $c<$Table->{cols}; $c++ ) {
+            $Table->{data}->[$r]->[$c] =~ s/\s+/$joiner/g;
+        }
+    }
+}
+
+
+
 # Useful functions
 sub round {
     my ($n, $figs) = @_, 0;
@@ -814,7 +827,7 @@ sub base {
     }
     while ($m<0)  { $y-=1; $m+=12 }
     while ($m>11) { $y+=1; $m-=12 }
-    my $base=365*$y + floor($y/4) - floor($y/100) + floor($y/400) + floor(.4+.6*$m) + 30*$m + $d - 307;
+    my $base=365*$y + floor($y/4) - floor($y/100) + floor($y/400) + floor((2+3*$m)/5) + 30*$m + $d - 307;
     return $base;
 }
 
