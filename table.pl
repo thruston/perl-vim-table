@@ -297,7 +297,7 @@ sub transpose {
 
 # Sort by column.  Create an extra temp col with "arr" for fancy sorting.
 sub sort_rows {
-    my $col_list = shift;
+    my $col_list = shift || 'a';
     if ($col_list =~ m{[a-zA-Z]+}xmsio) {
         for my $c (reverse split //, $col_list) {
             sort_rows_by_column($c)
@@ -596,6 +596,10 @@ sub arrange_cols {
     if ( $permutation =~ m{\A~} ) {
         $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols})
                      . substr($permutation, 1);
+    }
+    elsif ( $permutation =~ m{~\Z} ) {
+        $permutation = substr($permutation, 0, -1)
+                     . substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols});
     }
     elsif ( $permutation =~ m{\A-([a-z]+)\Z} ) {
         $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols});
