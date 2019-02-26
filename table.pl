@@ -68,6 +68,7 @@ my %Action_for = (
     unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
     ditto   => \&copy_down, 
+    nospace => \&remove_spaces_from_cells,
 );
 
 # deal with the command line
@@ -143,10 +144,6 @@ for (@input_lines) {
         if (/^([£€]\s?)/) {
             $money_cols[$i] ||= $1;
             $_ =~ s/$1//;
-        }
-        elsif ( /^\s*\$/ ) {
-            $money_cols[$i] ||= '$';
-            $_ =~ s/\$//;
         }
         else{
             $money_cols[$i] ||= '0';
@@ -618,8 +615,10 @@ sub arrange_cols {
             if ($value =~ /$Number_pattern/ && $value<0 ) {
                 $value = "($value)"
             }
-            elsif ($value =~ /^([.1234567890]+)([BKMG])$/ ) {
-                $value = sprintf "%g", $1 * ($2 eq 'G' ? 1073741824
+            elsif ($value =~ /^([.1234567890]+)([BKMGT])$/ ) {
+                $value = sprintf "%g", $1 * (
+                      $2 eq 'T' ? 1099511627776 
+                    : $2 eq 'G' ? 1073741824
                     : $2 eq 'M' ? 1048576
                     : $2 eq 'K' ? 1024
                     : 1);
@@ -651,6 +650,9 @@ sub arrange_cols {
                         }
                         elsif ( $t eq "_" ) {
                             $t = ".' '."
+                        }
+                        elsif ( $t eq "=" ) {
+                            $t = " eq "
                         }
                     }
                     # evaluate & replace answer with expression on error
@@ -759,6 +761,15 @@ sub unzip_table {
     $Table->{cols} = $new_cols;
 }
 
+sub remove_spaces_from_cells {
+    my $joiner = shift || "";
+    for (my $r = 0; $r < $Table->{rows}; $r++ ) {
+        for (my $c=0; $c<$Table->{cols}; $c++ ) {
+            $Table->{data}->[$r]->[$c] =~ s/\s+/$joiner/g;
+        }
+    }
+}
+
 # Useful functions
 sub round {
     my ($n, $figs) = @_, 0;
@@ -800,8 +811,8 @@ sub utos {
     }
 }
 
-# Convert yyyy-mm-dd to base date assuming Gregorian calendar rules
 sub base {
+    use integer;
     my $date = shift;
     my ($y,$m,$d);
     if (!defined $date || $date eq q{}) {
@@ -818,7 +829,7 @@ sub base {
     }
     while ($m<0)  { $y-=1; $m+=12 }
     while ($m>11) { $y+=1; $m-=12 }
-    my $base=365*$y + floor($y/4) - floor($y/100) + floor($y/400) + floor(.4+.6*$m) + 30*$m + $d - 307;
+    my $base=365*$y + $y/4 - $y/100 + $y/400 + (2+3*$m)/5 + 30*$m + $d - 307;
     return $base;
 }
 
@@ -828,22 +839,23 @@ sub base {
 # list.
 #
 sub date {
+    use integer;
     my $d = shift || 0;
     my ($y, $m) = (0,0);
-    $d = floor($d);
+    $d = $d/1;
 
     # Assume anything less than 1000 is a delta on today. (including negative numbers).
     if ($d < 1000) {
         $d += base();
     }
-    my $s = floor($d/146097); $d=$d-$s*146097;
+    my $s = $d/146097; $d=$d-$s*146097;
     if ($d == 146096) { ($y, $m, $d) = ($s*400+400, 12, 31) } # special case 1
     else {
-        my $c=floor($d/36524); $d=$d-$c*36524;
-        my $o=floor($d/1461);  $d=$d-$o*1461;
-        if ( $d==1460) { ($y, $m, $d) = ($s*400+$c*100+$o*4, 12, 31) } # special case 2
+        my $c=$d/36524; $d=$d-$c*36524;
+        my $o=$d/1461;  $d=$d-$o*1461;
+        if ( $d==1460) { ($y, $m, $d) = ($s*400+$c*100+$o*4+4, 12, 31) } # special case 2
         else {
-            $y=floor($d/365); $d=$d-$y*365+1; # d is now in range 1-365
+            $y=$d/365; $d=$d-$y*365+1; # d is now in range 1-365
             my @prior_days = ( $y==3 && ( $o < 24 || $c == 3 ) )
                 ? (0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 999)
                 : (0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 999);
@@ -854,7 +866,7 @@ sub date {
             $y = $s*400+$c*100+$o*4+$y+1;
         }
     }
-    return sprintf "%d-%02d-%02d", $y, $m, $d;
+    return sprintf "%04d-%02d-%02d", $y, $m, $d;
 }
 
 # returns 01-12 from January-December
