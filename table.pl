@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # A filter to line up tables neatly - mainly for use from Vim
-# Toby Thurston -- 28 Sep 2017 
+# Toby Thurston -- 08 Mar 2019
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -14,6 +14,7 @@
 #
 # Verbs: xp              transpose rows and cells
 #        sort col-list   sort by value of columns in the order given, use UPPERCASE to reverse
+#        uniq col-list   filter rows to unique values in columns given
 #        add function    add sum, mean, var, sd etc to foot of column
 #        arr col-list    rearrange/insert/delete cols and/or do calculations on column values.
 #        dp dp-list      round numbers in each col to specified decimal places
@@ -35,7 +36,7 @@ use utf8; # for £ signs
 use open qw[ :std :utf8 ];
 
 use List::Util qw(min max sum shuffle);
-use Math::Prime::Util qw(factor);
+use Math::Prime::Util qw(factor divisors);
 use Math::Round qw(nearest);
 use Math::SigFigs;
 use POSIX qw(floor ceil);
@@ -52,6 +53,7 @@ my $Hrule_pattern    = qr{\A -+ \Z}ixmso; # just a line of --------------
 my %Action_for = (
     xp      => \&transpose,
     sort    => \&sort_rows,
+    uniq    => \&uniq_rows,
     add     => \&add_totals,
     arr     => \&arrange_cols,
     make    => \&set_output_form,
@@ -97,7 +99,7 @@ elsif ($delim eq ',') {
     $separator = ', ';
 }
 else {
-    $separator = qq{$delim };
+    $separator = qq{ $delim};
     $delim     = qr/$delim/xms;
 }
 
@@ -290,6 +292,35 @@ sub transpose {
     }
     $Table->{data} = \@transposed_tab;
     @$Table{'rows','cols'} = @$Table{'cols','rows'};
+}
+
+# filter on unique combination of values in colums abc...
+sub uniq_rows {
+    my $cols = shift; my @cols;
+    if (!$cols) { @cols = 0 .. $Table->{cols}-1 }
+    else {
+        for my $c (split //, $cols) {
+            if ( $c =~ /^[a-z]$/) { 
+                my $i = ord($c)-ord('a');
+                if ($i < $Table->{cols}) {
+                    push @cols, $i;
+                }
+            }
+        }
+    }
+    if (@cols) {
+        my %seen;
+        my @unique_rows;
+        for my $r (@{$Table->{data}}) {
+            my $key = join '\x01', @$r[@cols];
+            if (! exists $seen{$key}) {
+                $seen{$key} = 1;
+                push @unique_rows, $r;
+            }
+        }
+        $Table->{data} = \@unique_rows;
+        $Table->{rows} = scalar @unique_rows;
+    }
 }
 
 # Sort by column.  Create an extra temp col with "arr" for fancy sorting.
@@ -877,44 +908,63 @@ sub hms {
     my $H = floor($s/3600); $s = $s - 3600 * $H;
     my $M = floor($s/60);   $s = $s - 60 * $M;
     my $S = floor($s);      $s = $s - $S;
-    my $HMS = sprintf "%02d:%02d:%02d", $H, $M, $S;
-    if ($s > 0) {
-        $HMS .= sprintf ".%03d", $s * 1000
-    }
-    return $HMS
+    return sprintf "%02d:%02d:%02d", $H, $M, $S;
+}
+
+sub hmss {
+    use integer;
+    my $ms = shift;
+    my $H = $ms / 3600000; $ms = $ms - 3600000 * $H;
+    my $M = $ms /   60000; $ms = $ms -   60000 * $M;
+    my $S = $ms /    1000; $ms = $ms -    1000 * $S;
+    return sprintf "%02d:%02d:%02d.%03d", $H, $M, $S, $ms;
 }
 
 
 # parse a date into sortable form -- NB no _ in the function name
-sub makedate {
+
+sub getbase {
     my $s = shift;
+    if ( $s =~ $Date_pattern ) {
+        return base($s)
+    }
+
     if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
         my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
         my $date = "$3-$m-$d";
-        my $base = base($date);
-        return date($base);
+        return base($date);
     }
-    elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([12]\d\d\d) \Z}iosmx ) {
-        return date(base("$3-$2-$1"));
+
+    if ( $s =~ m{\A ([0123]\d) \D (0[1-9]|1[012]) \D ([12]\d\d\d) \Z}iosmx ) {
+        return base("$3-$2-$1");
     }
-    elsif ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([012]\d) \Z}iosmx ) {
-        return date(base("20$3-$2-$1"));
+
+    if ( $s =~ m{\A([0123]\d)\D(0[1-9]|1[012])\D([012]\d) \Z}iosmx ) {
+        return base("20$3-$2-$1");
     }
-    elsif ( $s > 1000000000000 ) {
-        return date(base("1970-01-01") + floor($s/86400000)) . " " . hms(($s % 86400000)/1000)
+    return $s;
+}
+
+sub makedate {
+    my $s = shift;
+    if ($s =~ m{\A \d+ \Z}iosmx) {
+        if ( $s > 1000000000000 ) {
+            return date(base("1970-01-01") + floor($s/86400000)) . " " . hmss($s % 86400000)
+        }
+        elsif ( $s > 1000000000 ) {
+            return date(base("1970-01-01") + floor($s/86400)) . " " . hms($s % 86400)
+        }
+        else {
+            return date($s)
+        }
     }
-    elsif ( $s > 1000000000 ) {
-        return date(base("1970-01-01") + floor($s/86400)) . " " . hms($s % 86400)
-    }
-    else {
-        return $s;
-    }
+    return date(getbase($s))
 }
 
 sub isoweek {
     my $s = shift;
-    my $b = base($s);
+    my $b = getbase($s);
     if ( $b =~ /\D/ ) {
         return $s
     }
@@ -977,6 +1027,12 @@ sub sss {
     my $ts = shift;
     my ($h, $m, $s) = split ':', $ts;
     return $s+60*$m+3600*$h;
+}
+
+sub factorise {
+    my $n = shift;
+    my @f = factor($n);
+    return "@f";
 }
 
 __END__
@@ -1161,6 +1217,13 @@ NB *unlike* perl index addressing, "sort 1" sorts the first column not the secon
 (but "sort 0" also sorts on the first column...).  Because sorting is stable in perl, then
 if you want to sort on column b then column a, you can do "sort a sort b" to get the desired
 effect.
+
+=item uniq [a|b|c|...] - filter out duplicated rows
+
+C<uniq> removes duplicate rows from the table.  With no argument the whole 
+row is used as the key.  But if you provide a list of columns the key will
+consist of the values in those columns.  So "uniq a" will remove all rows with 
+duplicate values in column "a" and so on...
 
 =item arr [arrange-expression] - rearrange the columns
 
