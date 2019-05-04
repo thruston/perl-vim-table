@@ -871,7 +871,12 @@ sub base {
 #
 sub date {
     use integer;
+    use Scalar::Util qw(looks_like_number);
     my $d = shift || 0;
+    if (!looks_like_number($d)) {
+        return $d;
+    }
+
     my ($y, $m) = (0,0);
     $d = $d/1;
 
@@ -934,6 +939,13 @@ sub getbase {
     }
 
     if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
+        my $m = monthnumber($2);
+        my $d = sprintf "%02d", $1;
+        my $date = "$3-$m-$d";
+        return base($date);
+    }
+
+    if ( $s =~ m{\A (\d+)/(\S+)/((?:19|20)\d\d) \Z}iosmx ) {
         my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
         my $date = "$3-$m-$d";
