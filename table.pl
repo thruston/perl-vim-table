@@ -49,6 +49,7 @@ my $Number_pattern   = qr{\A $Number_atom \Z}ixmso;
 my $Interval_pattern = qr{\A\( ( $Number_atom ) \, ( $Number_atom ) \)\Z}ixsmo;
 my $Date_pattern     = qr{\A ([12]\d\d\d)\D?([01]\d)\D?([0123]\d) \Z}ixmso; # make groups capture
 my $Hrule_pattern    = qr{\A -+ \Z}ixmso; # just a line of --------------
+my $Trailing_number_pattern = qr{\A (.*\D) ($Number_atom) \Z}ixsmo;
 
 my %Action_for = (
     xp      => \&transpose,
@@ -357,12 +358,12 @@ sub sort_rows_by_column {
     if ($reverse) {
         @sorted = map  { $_->[0] }
                   sort { $b->[1] <=> $a->[1] || $b->[2] cmp $a->[2] }
-                  map  { [$_, as_number_reversed($_->[$col]), uc($_->[$col]||"")] } @{$Table->{data}};
+                  map  { [$_, as_number_reversed($_->[$col]), as_seminumeric_string($_->[$col])] } @{$Table->{data}};
     }
     else {
         @sorted = map  { $_->[0] }
                   sort { $a->[1] <=> $b->[1] || $a->[2] cmp $b->[2] }
-                  map  { [$_, as_number($_->[$col]), uc($_->[$col]||"")] }  @{$Table->{data}};
+                  map  { [$_, as_number($_->[$col]), as_seminumeric_string($_->[$col])] }  @{$Table->{data}};
     }                                   # or "" to allow for blank cells...
 
     $Table->{data} = \@sorted;
@@ -379,6 +380,23 @@ sub as_number {
     }
     return -1e9;
 }
+
+sub as_seminumeric_string {
+    my ($s) = @_;
+    # treat null as blank
+    return '' unless defined $s;
+
+    # pad trailing numbers with zeros
+    my $alpha;
+    my $numeric;
+    if (($alpha, $numeric) = $s =~ $Trailing_number_pattern) {
+        return sprintf "%s %09d", uc($alpha), $numeric;
+    }
+
+    # otherwise just upper case it...
+    return uc($s);
+}
+
 
 sub as_number_reversed {
     my ($s) = @_;
