@@ -938,14 +938,14 @@ sub getbase {
         return base($s)
     }
 
-    if ( $s =~ m{\A (\d+) \s (\S+) \s ((?:19|20)\d\d) \Z}iosmx ) {
+    if ( $s =~ m{\A (\d+) \s ([a-z]+) \s ((?:19|20)\d\d) \Z}iosmx ) {
         my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
         my $date = "$3-$m-$d";
         return base($date);
     }
 
-    if ( $s =~ m{\A (\d+)/(\S+)/((?:19|20)\d\d) \Z}iosmx ) {
+    if ( $s =~ m{\A (\d+)/([a-z]+)/((?:19|20)\d\d) \Z}iosmx ) {
         my $m = monthnumber($2);
         my $d = sprintf "%02d", $1;
         my $date = "$3-$m-$d";
