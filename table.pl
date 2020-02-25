@@ -528,7 +528,7 @@ sub make_wide_table {
     for my $x ( sort keys %values ) {
         my @row = ( $x );
         for my $y ( @keys ) {
-            push @row, $values{$x}{$y}
+            push @row, $values{$x}{$y} || '0'
         }
         push @wide_tab, [ @row ];
     }
@@ -1041,8 +1041,19 @@ sub hhmm {
 # return sec from h:m:s.ss
 sub sss {
     my $ts = shift;
-    my ($h, $m, $s) = split ':', $ts;
-    return $s+60*$m+3600*$h;
+    my @parts = split ':', $ts;
+    my $secs = 0;
+    for my $p (split ':', $ts) {
+        $secs = $secs * 60 + $p;
+    }
+    return $secs;
+}
+
+# epoch secs from yyyy-mm-dd hh:mm:ss
+sub epoch {
+    my $ts = shift;
+    my ($date, $time) = split ' ', $ts;
+    return 86400 * (base($date) - base('1970-01-01')) + sss($time)
 }
 
 sub factorise {
