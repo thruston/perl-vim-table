@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # A filter to line up tables neatly - mainly for use from Vim
-# Toby Thurston -- 08 Mar 2019
+# Toby Thurston -- 27 Feb 2020
 #
 # 1. Read the data from stdin into a "table" object
 # 2. Munge the table according to the supplied list of verbs+options
@@ -70,7 +70,7 @@ my %Action_for = (
     zip     => \&zip_table,
     unzip   => \&unzip_table,
     shuffle => \&shuffle_rows,
-    ditto   => \&copy_down, 
+    ditto   => \&copy_down,
     nospace => \&remove_spaces_from_cells,
 );
 
@@ -108,7 +108,7 @@ my $indent = 0;
 my $eol_marker = q{};
 
 # Read the data from stdin unless it's connected to the terminal.
-# For normal usage from VIM STDIN will *not* be connected to the terminal,
+# For normal usage from Vim STDIN will *not* be connected to the terminal,
 # but will have the input lines we need.  For testing, we can run "perl table.pl"
 # from the command line: in this situation we *don't* want to wait for STDIN.
 my @input_lines = -t STDIN ? () : <STDIN>;
@@ -301,7 +301,7 @@ sub uniq_rows {
     if (!$cols) { @cols = 0 .. $Table->{cols}-1 }
     else {
         for my $c (split //, $cols) {
-            if ( $c =~ /^[a-z]$/) { 
+            if ( $c =~ /^[a-z]$/) {
                 my $i = ord($c)-ord('a');
                 if ($i < $Table->{cols}) {
                     push @cols, $i;
@@ -614,7 +614,7 @@ sub comma {
     my $cell = shift;
     $cell = reverse $cell;
     $cell =~ s/(\d\d\d)(?=\d)(?!\d*\.)/$1,/g;
-    return scalar reverse $cell; 
+    return scalar reverse $cell;
 }
 
 sub decomma {
@@ -626,8 +626,8 @@ sub decomma {
 sub copy_down {
     for (my $r = 0; $r < $Table->{rows}; $r++ ) {
         for (my $c=0; $c<$Table->{cols}; $c++ ) {
-            if (defined $Table->{data}->[$r]->[$c] 
-                && $r > 0 
+            if (defined $Table->{data}->[$r]->[$c]
+                && $r > 0
                 && $Table->{data}->[$r]->[$c] eq q{"}) {
                 $Table->{data}->[$r]->[$c] = $Table->{data}->[$r-1]->[$c];
             }
@@ -639,7 +639,7 @@ sub copy_down {
 sub arrange_cols {
     my $permutation = shift;
 
-    if ( $permutation =~ m{\A~} ) {
+    if ( $permutation =~ m{\A~} ) { # expand ~ to mean remaining cols
         $permutation = substr('abcdefghijklmnopqrstuvwxyz',0,$Table->{cols})
                      . substr($permutation, 1);
     }
@@ -666,7 +666,7 @@ sub arrange_cols {
             }
             elsif ($value =~ /^([.1234567890]+)([BKMGT])$/ ) {
                 $value = sprintf "%g", $1 * (
-                      $2 eq 'T' ? 1099511627776 
+                      $2 eq 'T' ? 1099511627776
                     : $2 eq 'G' ? 1073741824
                     : $2 eq 'M' ? 1048576
                     : $2 eq 'K' ? 1024
@@ -676,6 +676,8 @@ sub arrange_cols {
                 $value = "'$value'"
             }
             $value_for{$key} = $value;
+            # save the corresponding value in the line above
+            $value_for{'^' . $key} = $r==0 ? $value : $Table->{data}->[$r-1]->[$c] || 0;
             $key++; # bump the column index
         }
         for my $m ( $permutation =~ m{[a-zA-Z1-9.?\$]|\{.*?\}}gxmso ) {
@@ -689,7 +691,7 @@ sub arrange_cols {
                     # strip {} from expr
                     $m =~ s/^\{//; $m =~ s/\}$//;
                     # substitute cell values (and don't bother checking for out of range letters)
-                    my @tokens = $m =~ m/[a-z]+|[A-Z]+|./g;
+                    my @tokens = $m =~ m/\^?[a-z]+|[A-Z]+|./g;
                     for my $t (@tokens) {
                         if ( exists $value_for{$t} ) {
                             $t = $value_for{$t}
@@ -1012,7 +1014,7 @@ sub isoweek {
     }
     my $isoweek_number = 1 + int(($b-$start) / 7);
     my $isoday = 1 + $b % 7;
-    return sprintf "%d-W%02d-%d", $isoweek_year, $isoweek_number, $isoday; 
+    return sprintf "%d-W%02d-%d", $isoweek_year, $isoweek_number, $isoday;
 }
 
 sub first_monday {
@@ -1179,7 +1181,7 @@ area will be the whole file.
 
 From now on, I'm assuming you are using a Vim :Table command to access table.pl
 
-=head2 Use from within VIM or GVim or MacVim, etc
+=head2 Use from within Vim or GVim or MacVim, etc
 
     :Table [delimiter] [verb [option]]...
 
@@ -1265,9 +1267,9 @@ effect.
 
 =item uniq [a|b|c|...] - filter out duplicated rows
 
-C<uniq> removes duplicate rows from the table.  With no argument the whole 
+C<uniq> removes duplicate rows from the table.  With no argument the whole
 row is used as the key.  But if you provide a list of columns the key will
-consist of the values in those columns.  So "uniq a" will remove all rows with 
+consist of the values in those columns.  So "uniq a" will remove all rows with
 duplicate values in column "a" and so on...
 
 =item arr [arrange-expression] - rearrange the columns
@@ -1359,8 +1361,16 @@ values in the column from the top of the table to the current row. So given
     Second  2  3
     Third   3  6
 
-Note that the upper case letters also work inside a {curly brace} expression, so you can include them in a
-normal expression.
+You can also refer to the "previous" value of a column, so if you prefix a column
+letter with ^ it will pick up the value for that column in the row above.  So "C<arr ab{^b}>"
+with the table above gives you
+
+    First   1  1
+    Second  2  1
+    Third   3  2
+
+Note that the upper case letters also work inside a {curly brace} expression, so you can include them
+and the ^-prefix in normal expressions.
 
 There are also some very simple date routines included.  C<base> returns the number of days
 since 1 Jan in the year 1 (assuming the Gregorian calendar extended backwards).  The argument
@@ -1434,7 +1444,7 @@ The CSV option should produce something that you can easily import into Excel
 or similar spreadsheets.  However beware that it's not very clever: fields with
 commas in will be enclosed with "double quotes", but my routines are designed
 to be simple rather than fool proof.  To get back from CSV form to plain form
-do C<Table , make plain>, (or just the undo command in Vi). 
+do C<Table , make plain>, (or just the undo command in Vi).
 
 The TSV option can be used when you want to import into Word -- you can use Table.. Convert Text to Table...
 using tabs as the column separator
@@ -1607,7 +1617,7 @@ None.
 
 Perl 5.08 or better.
 
-Note that you don't actually need VIM compiled with Perl support, table.pl works entirely as an
+Note that you don't actually need Vim compiled with Perl support, table.pl works entirely as an
 external filter.
 
 =head1 INCOMPATIBILITIES
@@ -1621,11 +1631,11 @@ Probably plenty, because I've not done very rigorous testing.
 
 =head1 AUTHOR
 
-Toby Thurston -- 28 Sep 2017 
+Toby Thurston -- 27 Feb 2020
 
 =head1 LICENSE AND COPYRIGHT
 
-Same terms as Perl and VIM.  Free to use, but not to pass off as your own.
+Same terms as Perl and Vim.  Free to use, but not to pass off as your own.
 No warranty expressed or implied.
 
 =cut
